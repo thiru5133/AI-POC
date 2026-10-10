@@ -3,7 +3,25 @@
 from app.core.config import get_settings
 from app.database.session import get_session_factory
 from app.domain.loader import load_profile_file, parse_profile
-from app.models import DomainProfileRow, Tenant
+from app.auth.security import hash_password
+from app.models import DomainProfileRow, Tenant, User
+from app.repositories.users import UserRepository
+
+
+def _seed_superadmin(session, settings) -> None:
+    if not (settings.superadmin_email and settings.superadmin_password):
+        return
+    email = settings.superadmin_email.strip().lower()
+    if UserRepository(session).get_by_email(email) is None:
+        session.add(
+            User(
+                email=email,
+                name="Super Admin",
+                password_hash=hash_password(settings.superadmin_password),
+                role="superadmin",
+                status="active",
+            )
+        )
 
 
 def seed(session_factory=None) -> None:
@@ -27,6 +45,7 @@ def seed(session_factory=None) -> None:
             )
         else:
             row.config = config  # keep the seeded profile in sync with hotel.json
+        _seed_superadmin(session, settings)
         session.commit()
     print("seed complete")
 

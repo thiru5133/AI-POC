@@ -2,14 +2,19 @@ from collections.abc import Callable
 from functools import lru_cache
 
 from fastapi import Depends, Header, WebSocket
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 from app.ai.base import LLMProvider
 from app.ai.factory import LazyLLMProvider
+from app.auth.security import decode_access_token
+from app.auth.service import AuthService
 from app.conversation.engine import ConversationEngine
 from app.conversation.service import ConversationService
 from app.core.config import Settings, get_settings
+from app.core.errors import ForbiddenError, UnauthorizedError
 from app.database.session import get_session_factory
+from app.models import User
 from app.tools.registry import ToolRegistry
 from app.voice.base import BrowserVoiceProvider, STTProvider, TTSProvider, VoiceProvider
 from app.voice.deepgram import DeepgramSTT, DeepgramTTS
@@ -64,3 +69,40 @@ def get_service(
 # WebSocket routes cannot use Header()/Depends on every parameter the same way; resolve manually.
 def ws_tenant_id(ws: WebSocket) -> str:
     return ws.query_params.get("tenantId") or get_settings().default_tenant_id
+
+
+# ---- auth ----
+_bearer = HTTPBearer(auto_error=False)
+
+
+def get_auth_service(
+    sessions: Callable[[], Session] = Depends(get_sessions), settings: Settings = Depends(get_settings)
+) -> AuthService:
+    return AuthService(sessions, settings)
+
+
+async def get_current_user(
+    creds: HTTPAuthorizationCredentials | None = Depends(_bearer),
+    auth: AuthService = Depends(get_auth_service),
+    settings: Settings = Depends(get_settings),
+) -> User:
+    if creds is None:
+        raise UnauthorizedError("Authentication required")
+    claims = decode_access_token(settings, creds.credentials)
+    user = await auth.get_user(claims["sub"])
+    if user is None or user.status != "active":
+        raise UnauthorizedError("Authentication required")
+    return user
+
+
+def require_role(*roles: str) -> Callable[[User], User]:
+    def dependency(user: User = Depends(get_current_user)) -> User:
+        if user.role not in roles:
+            raise ForbiddenError("You do not have access to this resource")
+        return user
+
+    return dependency
+
+
+require_superadmin = require_role("superadmin")
+require_admin_or_above = require_role("admin", "superadmin")

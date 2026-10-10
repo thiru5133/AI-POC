@@ -27,7 +27,7 @@ React + TS (Voice UI)  ──REST / WebSocket──>  FastAPI (api/)
 - **Replaceable providers**: `LLMProvider`, `STTProvider`, `TTSProvider`, `VoiceProvider` are interfaces; Deepgram/Anthropic are implementations.
 
 ## Layout
-`backend/app/`: `api/` routes+schemas+deps · `conversation/` engine, context, prompt, chunker, service · `ai/` providers · `domain/` profile model + `profiles/hotel.json` · `tools/` registry · `workflows/` (booking state machine, Phase 4) · `voice/` interfaces, Deepgram, fakes, WS session · `models/`, `repositories/`, `database/` (SQLAlchemy + Alembic) · `core/` settings, JSON logging, error envelope · `tenants/`, `auth/` (stubs for Phase 8).
+`backend/app/`: `api/` routes+schemas+deps · `conversation/` engine, context, prompt, chunker, service · `ai/` providers · `domain/` profile model + `profiles/hotel.json` · `tools/` registry · `workflows/` (booking state machine, Phase 4) · `voice/` interfaces, Deepgram, fakes, WS session · `models/`, `repositories/`, `database/` (SQLAlchemy + Alembic) · `core/` settings, JSON logging, error envelope · `auth/` security helpers (argon2, JWT, refresh tokens), login throttle and `AuthService` · `tenants/` (stub).
 `frontend/src/`: `features/conversation/` UI · `voice/` `VoiceClient` interface, `BrowserDeepgramClient`, `useVoiceSession` · `services/` typed API client · `types/`.
 
 Deviation from the suggested layout: no `agents/` (single engine), added `workflows/` and `core/`.
@@ -48,7 +48,28 @@ Deviation from the suggested layout: no `agents/` (single engine), added `workfl
 | GET | `/api/domain-profiles/{id}` | profile config |
 | WS | `/ws/voice/{id}` | up: binary mic audio, `{"type":"interrupt"}`; down: `transcript.partial/final`, `assistant.text`, `assistant.audio_end`, `assistant.interrupt`, `error` + binary MP3 per sentence |
 
-Errors: `{"error": {"code", "message", "requestId"}}`. Phase 1 tenant = `X-Tenant-Id` header (default demo tenant); JWT in Phase 8.
+Errors: `{"error": {"code", "message", "requestId"}}`. The public voice/conversation endpoints still take the tenant from the `X-Tenant-Id` header (default demo tenant); moving them onto JWT claims is later work.
+
+## Auth and admin onboarding
+Admins sign up, a superadmin approves them, then they can log in. Approval only activates the user and links them to the default tenant (no tenant creation yet).
+
+- `users` (`role` superadmin|admin, `status` pending|active|rejected|disabled; superadmin has no tenant) and `refresh_tokens` (sha256-hashed, rotated on every refresh).
+- Access JWT (15 min, HS256) is sent as `Authorization: Bearer` and kept in memory by the SPA. The refresh token is an httpOnly, SameSite=Lax cookie scoped to `/api/auth`. Replaying an already-rotated refresh token revokes all of that user's tokens.
+- The superadmin is seeded from `SUPERADMIN_EMAIL` / `SUPERADMIN_PASSWORD` on startup. Set `JWT_SECRET` outside dev.
+- Failed logins are throttled per email+IP (5 per 15 min, in-memory, so per-process only).
+
+| Method | Path | Access |
+|---|---|---|
+| POST | `/api/auth/register` | public; `{name, email, password}` → 202, creates a pending admin; 409 if the email or name is taken; names must be unique and cannot contain `@` |
+| POST | `/api/auth/login` | public; `{identifier, password}` where identifier is the email or the (case-insensitive) name; 401 bad credentials, 403 `account_pending` / `account_rejected` / `account_disabled`, 429 throttled |
+| POST | `/api/auth/refresh` · `/api/auth/logout` | refresh cookie |
+| GET | `/api/auth/me` | any active user |
+| GET | `/api/admin/onboarding-requests?status=pending` | superadmin |
+| POST | `/api/admin/onboarding-requests/{id}/approve` · `/reject` (`{reason?}`) | superadmin |
+| GET | `/api/admin/users?status=&role=&q=&limit=&offset=` | superadmin; paged list (`items, total, counts` per status); `q` matches name or email |
+| GET | `/api/admin/users/{id}` | superadmin; adds tenant name, reviewer and rejection reason |
+
+SPA routes: `/` redirects to the user's home (or `/login`). Logged-out layout: `/login`, `/register`, `/pending`. Authenticated layout with sidebar (`layouts/AppShell`): `/admin` (dashboard), `/call` (live voice console), `/superadmin/requests` and `/superadmin/users` (superadmin only).
 
 ## Hotel API tool interface (implemented Phase 3)
 `GET /api/hotel`, `GET /api/rooms`, `POST /api/rooms/availability {checkIn, checkOut, guests, roomType?}`, `POST /api/bookings`, `GET|PUT|DELETE /api/bookings/{id}` — wrapped as tools `get_hotel_information`, `get_rooms`, `check_room_availability`, `create_booking` (only reachable through the booking state machine after explicit confirmation), `get_booking`, `modify_booking`, `cancel_booking`.

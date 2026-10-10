@@ -15,13 +15,11 @@ export function VoiceConsole(props: UseVoiceSessionOptions) {
   };
 
   return (
-    <section className="console">
-      <header>
-        <h1>AI Receptionist</h1>
-        <p>Demo Hotel · voice assistant</p>
-      </header>
-      <StatusBar status={status} error={error} />
-      <MicButton status={status} onStart={() => void start()} onStop={stop} />
+    <section className="console card">
+      <div className="console-controls">
+        <StatusBar status={status} error={error} />
+        <MicButton status={status} onStart={() => void start()} onStop={stop} />
+      </div>
       <Transcript entries={transcript} />
       <form className="text-fallback" onSubmit={submit}>
         <input
@@ -31,7 +29,7 @@ export function VoiceConsole(props: UseVoiceSessionOptions) {
           onChange={(e) => setDraft(e.target.value)}
           disabled={sending}
         />
-        <button type="submit" disabled={sending || !draft.trim()}>
+        <button type="submit" className="primary" disabled={sending || !draft.trim()}>
           {sending ? "Sending…" : "Send"}
         </button>
       </form>

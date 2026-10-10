@@ -1,3 +1,11 @@
-from app.models.entities import Conversation, DomainProfileRow, Message, Tenant, ToolCall
+from app.models.entities import (
+    Conversation,
+    DomainProfileRow,
+    Message,
+    RefreshToken,
+    Tenant,
+    ToolCall,
+    User,
+)
 
-__all__ = ["Conversation", "DomainProfileRow", "Message", "Tenant", "ToolCall"]
+__all__ = ["Conversation", "DomainProfileRow", "Message", "RefreshToken", "Tenant", "ToolCall", "User"]

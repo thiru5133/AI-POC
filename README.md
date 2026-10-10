@@ -23,5 +23,8 @@ docker compose run --rm --no-deps frontend npm test
 docker compose run --rm --no-deps frontend npx tsc --noEmit
 ```
 
+## Admin login
+Set `SUPERADMIN_EMAIL` and `SUPERADMIN_PASSWORD` (and a real `JWT_SECRET`) in `.env`; the superadmin is created on backend start. Admins request access at `/register` and can log in after the superadmin approves them at `/superadmin/requests`.
+
 ## Config
 Edit `backend/app/domain/profiles/hotel.json` (greeting, FAQs, style); it is re-seeded on backend start.

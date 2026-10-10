@@ -22,6 +22,13 @@ class Settings(BaseSettings):
     default_tenant_id: str = "00000000-0000-0000-0000-000000000001"
     default_domain_profile_id: str = "00000000-0000-0000-0000-0000000000a1"
 
+    jwt_secret: str = "dev-insecure-change-me"
+    access_token_minutes: int = 15
+    refresh_token_days: int = 7
+    cookie_secure: bool = False
+    superadmin_email: str = ""
+    superadmin_password: str = ""
+
     log_level: str = "INFO"
 
 
