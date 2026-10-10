@@ -85,3 +85,33 @@ async def test_context_retained_across_turns(session_factory, llm):
     assert "I need a room from October 10th to 12th" in contents[0]  # earlier turn is in the prompt
     assert contents[-1] == "Two adults"
     assert second_call_messages[0]["role"] == "user"  # greeting dropped, roles alternate
+
+
+def test_openai_message_translation():
+    from app.ai.openai_compatible import to_openai_messages
+
+    msgs = [
+        {"role": "user", "content": "go"},
+        {"role": "assistant", "content": [
+            {"type": "text", "text": "Checking."},
+            {"type": "tool_use", "id": "t1", "name": "lookup", "input": {"q": "x"}},
+        ]},
+        {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "t1", "content": "{\"v\": 1}"}]},
+    ]
+    out = to_openai_messages("sys", msgs)
+    assert out[0] == {"role": "system", "content": "sys"}
+    assert out[2]["tool_calls"][0]["function"] == {"name": "lookup", "arguments": '{"q": "x"}'}
+    assert out[3] == {"role": "tool", "tool_call_id": "t1", "content": "{\"v\": 1}"}
+
+
+def test_factory_selects_groq_and_requires_key():
+    import pytest
+    from app.ai.factory import create_llm_provider
+    from app.ai.openai_compatible import OpenAICompatibleProvider
+    from app.core.config import Settings
+    from app.core.errors import ConfigurationError
+
+    with pytest.raises(ConfigurationError):
+        create_llm_provider(Settings(_env_file=None, llm_provider="groq", groq_api_key=""))
+    provider = create_llm_provider(Settings(_env_file=None, llm_provider="groq", groq_api_key="k"))
+    assert isinstance(provider, OpenAICompatibleProvider)

@@ -16,11 +16,16 @@
       {"question": "Do you have Wi-Fi?", "answer": "Yes, complimentary high-speed Wi-Fi is available throughout the hotel."},
       {"question": "Do you have a restaurant?", "answer": "Yes, our restaurant serves breakfast, lunch and dinner from 7 AM to 11 PM."},
       {"question": "What is your cancellation policy?", "answer": "Bookings can be cancelled free of charge up to 24 hours before check-in."},
+      {"question": "Are rooms available? Do you have any rooms free tonight, this weekend or on a particular date?", "answer": "I can't check live room availability. Please call +91 44 5535 1234 and the front desk will confirm for your dates."},
+      {"question": "What types of rooms do you have? Do you have single, double, 3 sharing or 4 sharing rooms?", "answer": "We offer single, double, 3-sharing and 4-sharing rooms."},
+      {"question": "Do you have a 3 sharing (triple sharing, 3 beds) room?", "answer": "Yes, we have 3-sharing rooms. For availability, please call +91 44 5535 1234."},
+      {"question": "Do you have a 4 sharing (4 beds) room?", "answer": "Yes, we have 4-sharing rooms. For availability, please call +91 44 5535 1234."},
+      {"question": "How much does a room cost? What is the price or rent for 3 sharing or 4 sharing?", "answer": "Rates depend on the room type and dates. Please call +91 44 5535 1234 for current pricing."},
       {"question": "What amenities do you offer?", "answer": "We offer an outdoor swimming pool, a fitness center, a restaurant, free parking, complimentary Wi-Fi and 24-hour room service."}
     ],
     "info": {
       "Address": "12 Lake View Road, Chennai, India",
-      "Phone": "+91 44 0000 0000"
+      "Phone": "+91 44 5535 1234"
     }
   },
   "intents": ["GREETING", "ASK_FAQ", "CHECK_AVAILABILITY", "CREATE_BOOKING", "CANCEL_BOOKING", "MODIFY_BOOKING", "HUMAN_REQUEST", "UNKNOWN"],

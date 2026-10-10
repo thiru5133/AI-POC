@@ -4,7 +4,7 @@ Everything runs in Docker (SQL Server + FastAPI backend + React frontend). See [
 
 ## Run
 ```
-cp .env.example .env        # set ANTHROPIC_API_KEY and DEEPGRAM_API_KEY
+cp .env.example .env        # set GROQ_API_KEY and DEEPGRAM_API_KEY
 docker compose up --build
 ```
 Open http://localhost:5173 in Chrome/Edge → **Start call** → allow the microphone.

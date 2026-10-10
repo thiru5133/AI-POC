@@ -8,8 +8,11 @@ class Settings(BaseSettings):
 
     database_url: str = "sqlite:///./dev.db"
 
-    llm_provider: str = "anthropic"
-    llm_model: str = "claude-sonnet-5-5"
+    llm_provider: str = "groq"  # groq | anthropic | openai_compatible | fake
+    llm_model: str = ""  # empty = provider default
+    llm_base_url: str = ""  # openai_compatible only
+    llm_api_key: str = ""  # openai_compatible only
+    groq_api_key: str = ""
     anthropic_api_key: str = ""
 
     deepgram_api_key: str = ""
