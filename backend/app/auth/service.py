@@ -10,7 +10,9 @@ from app.auth.ratelimit import LoginRateLimiter, login_limiter
 from app.core.config import Settings
 from app.core.errors import ConflictError, ForbiddenError, NotFoundError, UnauthorizedError
 from app.models import RefreshToken, Tenant, User
+from app.notifications.email import ConsoleEmailSender, EmailSender, credentials_email
 from app.repositories.users import UserRepository
+from app.tenants.service import create_organization
 
 _BLOCKED = {
     "pending": "Your account is awaiting superadmin approval.",
@@ -35,13 +37,15 @@ class AuthService:
         session_factory: Callable[[], Session],
         settings: Settings,
         limiter: LoginRateLimiter = login_limiter,
+        email: EmailSender | None = None,
     ):
         self._sf = session_factory
         self._settings = settings
         self._limiter = limiter
+        self._email = email or ConsoleEmailSender()
 
     # ---- sync implementations ----
-    def _register(self, name: str, email: str, password: str) -> User:
+    def _register(self, name: str, email: str, organization_name: str) -> User:
         email = normalize_email(email)
         name = normalize_name(name)
         with self._sf() as session:
@@ -53,9 +57,11 @@ class AuthService:
             user = User(
                 email=email,
                 name=name,
-                password_hash=security.hash_password(password),
+                # No password yet: one is generated and emailed when a superadmin approves the request.
+                password_hash=security.hash_password(security.generate_password(32)),
                 role="admin",
                 status="pending",
+                requested_org_name=organization_name,
             )
             try:
                 repo.add(user)
@@ -157,16 +163,30 @@ class AuthService:
             if user.status != "pending":
                 raise ConflictError(f"Request already {user.status}")
             user.status = "active" if approve else "rejected"
-            user.tenant_id = self._settings.default_tenant_id if approve else None
+            if approve:
+                # Every approved admin gets their own organization (tenant).
+                org = create_organization(session, user.requested_org_name or f"{user.name}'s Organization")
+                user.tenant_id = org.id
+                password = security.generate_password()
+                user.password_hash = security.hash_password(password)
+            else:
+                user.tenant_id = None
             user.rejection_reason = None if approve else (reason or None)
             user.reviewed_by = reviewer_id
             user.reviewed_at = security.utcnow()
+            if approve:
+                # Sent before the commit: if delivery fails the approval is rolled back and can be retried,
+                # instead of leaving an active account whose password nobody received.
+                subject, body = credentials_email(
+                    user.name, org.name, user.email, password, f"{self._settings.app_base_url.rstrip('/')}/login"
+                )
+                self._email.send(user.email, subject, body)
             session.commit()
             return user
 
     # ---- async API ----
-    async def register(self, name: str, email: str, password: str) -> User:
-        return await asyncio.to_thread(self._register, name, email, password)
+    async def register(self, name: str, email: str, organization_name: str) -> User:
+        return await asyncio.to_thread(self._register, name, email, organization_name)
 
     async def login(self, identifier: str, password: str, client: str) -> tuple[User, str, str]:
         return await asyncio.to_thread(self._login, identifier, password, client)

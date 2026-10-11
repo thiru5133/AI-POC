@@ -102,7 +102,7 @@ def test_user_detail_includes_tenant_and_reviewer(client, headers):
     assert detail["status"] == "active"
     assert detail["reviewedByName"] == "Root"
     assert detail["reviewedAt"]
-    assert detail["tenantName"] == "Demo Tenant"
+    assert detail["tenantName"] == "Chitra Devi's Organization"
 
     plain = client.get(f"/api/admin/users/{asha['id']}", headers=headers).json()
     assert plain["email"] == "asha@example.com" and plain["reviewedByName"] is None

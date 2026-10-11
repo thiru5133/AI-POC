@@ -19,6 +19,14 @@ def utcnow() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)  # naive UTC, like the models
 
 
+# No 0/O/1/l/I so a password read from an email cannot be mistyped.
+_PASSWORD_ALPHABET = "abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+
+
+def generate_password(length: int = 14) -> str:
+    return "".join(secrets.choice(_PASSWORD_ALPHABET) for _ in range(length))
+
+
 def hash_password(password: str) -> str:
     return _hasher.hash(password)
 

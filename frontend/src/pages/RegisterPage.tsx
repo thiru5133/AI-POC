@@ -6,8 +6,8 @@ import { authService } from "../services/authService";
 export function RegisterPage() {
   const navigate = useNavigate();
   const [name, setName] = useState("");
+  const [organizationName, setOrganizationName] = useState("");
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -16,7 +16,7 @@ export function RegisterPage() {
     setError(null);
     setBusy(true);
     try {
-      await authService.register(name, email, password);
+      await authService.register(name, email, organizationName);
       navigate("/pending", { replace: true, state: { email, justRegistered: true } });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not submit your request");
@@ -28,7 +28,9 @@ export function RegisterPage() {
   return (
     <form className="card form" onSubmit={onSubmit}>
       <h1>Request admin access</h1>
-      <p className="muted">A superadmin must approve your request before you can log in.</p>
+      <p className="muted">
+        A superadmin must approve your request. Once approved, your password is emailed to you.
+      </p>
       <label>
         Name (you can also log in with it, so it must be unique)
         <input
@@ -41,20 +43,12 @@ export function RegisterPage() {
         />
       </label>
       <label>
-        Email
-        <input type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
+        Organization name (shown to callers)
+        <input required maxLength={200} value={organizationName} onChange={(e) => setOrganizationName(e.target.value)} />
       </label>
       <label>
-        Password (min. 8 characters)
-        <input
-          type="password"
-          autoComplete="new-password"
-          required
-          minLength={8}
-          maxLength={128}
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-        />
+        Email (your password is sent here)
+        <input type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
       </label>
       {error && (
         <p className="error" role="alert">

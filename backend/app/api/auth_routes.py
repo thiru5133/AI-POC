@@ -33,7 +33,7 @@ def _set_refresh_cookie(response: Response, raw: str, settings: Settings) -> Non
 
 @router.post("/register", response_model=RegisterResponse, status_code=202)
 async def register(body: RegisterRequest, auth: AuthService = Depends(deps.get_auth_service)):
-    await auth.register(body.name, body.email, body.password)
+    await auth.register(body.name, body.email, body.organization_name)
     return RegisterResponse()
 
 

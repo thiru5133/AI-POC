@@ -69,7 +69,15 @@ class DomainProfileOut(CamelModel):
 class RegisterRequest(CamelModel):
     name: str = Field(min_length=1, max_length=200)
     email: EmailStr
-    password: str = Field(min_length=8, max_length=128)
+    organization_name: str = Field(min_length=1, max_length=200)
+
+    @field_validator("organization_name")
+    @classmethod
+    def _org_name_not_blank(cls, value: str) -> str:
+        value = " ".join(value.split())
+        if not value:
+            raise ValueError("Organization name is required")
+        return value
 
     @field_validator("name")
     @classmethod

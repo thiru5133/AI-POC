@@ -87,6 +87,7 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String(255))
     role: Mapped[str] = mapped_column(String(20))  # superadmin | admin
     status: Mapped[str] = mapped_column(String(20), default="pending")  # pending | active | rejected | disabled
+    requested_org_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
     rejection_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
     reviewed_by: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

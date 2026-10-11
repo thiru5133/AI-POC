@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     access_token_minutes: int = 15
     refresh_token_days: int = 7
     cookie_secure: bool = False
+    app_base_url: str = "http://localhost:5173"  # used for the login link in emails
+    email_from: str = ""  # sender address; must be verified in SendGrid
+    sendgrid_api_key: str = ""  # empty = log emails instead of sending (dev only)
     superadmin_email: str = ""
     superadmin_password: str = ""
 

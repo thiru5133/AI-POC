@@ -15,6 +15,7 @@ from app.core.config import Settings, get_settings
 from app.core.errors import ForbiddenError, UnauthorizedError
 from app.database.session import get_session_factory
 from app.models import User
+from app.notifications.email import EmailSender, create_email_sender
 from app.tools.registry import ToolRegistry
 from app.voice.base import BrowserVoiceProvider, STTProvider, TTSProvider, VoiceProvider
 from app.voice.deepgram import DeepgramSTT, DeepgramTTS
@@ -75,10 +76,16 @@ def ws_tenant_id(ws: WebSocket) -> str:
 _bearer = HTTPBearer(auto_error=False)
 
 
+def get_email_sender(settings: Settings = Depends(get_settings)) -> EmailSender:
+    return create_email_sender(settings)
+
+
 def get_auth_service(
-    sessions: Callable[[], Session] = Depends(get_sessions), settings: Settings = Depends(get_settings)
+    sessions: Callable[[], Session] = Depends(get_sessions),
+    settings: Settings = Depends(get_settings),
+    email: EmailSender = Depends(get_email_sender),
 ) -> AuthService:
-    return AuthService(sessions, settings)
+    return AuthService(sessions, settings, email=email)
 
 
 async def get_current_user(
