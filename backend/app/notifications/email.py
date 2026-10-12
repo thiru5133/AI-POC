@@ -77,8 +77,8 @@ def create_email_sender(settings: Settings) -> EmailSender:
 
 
 def credentials_email(name: str, organization: str, email: str, password: str, login_url: str) -> tuple[str, str]:
-    """(subject, body) sent to an admin when their access request is approved."""
-    subject = f"Your {organization} account is approved"
+    """(subject, body) sent to a business admin when a superadmin creates their business."""
+    subject = f"Your {organization} account is ready"
     body = (
         f"Hello {name},\n\n"
         f"Your request for admin access for {organization} has been approved.\n\n"
@@ -88,3 +88,13 @@ def credentials_email(name: str, organization: str, email: str, password: str, l
         "Keep this password private.\n"
     )
     return subject, body
+
+
+def otp_email(name: str, code: str, minutes: int) -> tuple[str, str]:
+    """(subject, body) with the one-time code that confirms a new account's email address."""
+    body = (
+        f"Hello {name},\n\n"
+        f"Your verification code is: {code}\n\n"
+        f"It expires in {minutes} minutes. If you did not try to log in, you can ignore this email.\n"
+    )
+    return "Your verification code", body

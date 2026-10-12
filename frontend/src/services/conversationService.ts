@@ -1,9 +1,13 @@
-import type { ConversationCreated, VoiceSessionDescriptor } from "../types";
+import type { ConversationCreated, ConversationDetail, ConversationList, VoiceSessionDescriptor } from "../types";
 import { apiFetch } from "./apiClient";
 
 export const conversationService = {
-  create: () =>
-    apiFetch<ConversationCreated>("/api/conversations", { method: "POST", body: JSON.stringify({}) }),
+  /** This organization's saved conversations (calls and chats), newest first. */
+  list: (offset = 0, limit = 30) => apiFetch<ConversationList>(`/api/conversations?limit=${limit}&offset=${offset}`),
+
+  get: (id: string) => apiFetch<ConversationDetail>(`/api/conversations/${id}`),
+
+  create: () => apiFetch<ConversationCreated>("/api/conversations", { method: "POST" }),
 
   sendMessage: (conversationId: string, text: string) =>
     apiFetch<{ reply: string }>(`/api/conversations/${conversationId}/messages`, {

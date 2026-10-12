@@ -28,6 +28,7 @@ class VoiceSession:
         tts: TTSProvider,
         tenant_id: str,
         conversation_id: str,
+        user_id: str | None = None,
     ):
         self.ws = ws
         self.service = service
@@ -35,6 +36,7 @@ class VoiceSession:
         self.tts = tts
         self.tenant_id = tenant_id
         self.conversation_id = conversation_id
+        self.user_id = user_id
         self._turn: asyncio.Task | None = None
         self._speaking = False
         self._log_extra = {"tenant_id": tenant_id, "session_id": conversation_id}
@@ -42,7 +44,7 @@ class VoiceSession:
     async def run(self) -> None:
         await self.ws.accept()
         try:
-            profile = await self.service.get_profile(self.tenant_id, self.conversation_id)
+            profile = await self.service.get_profile(self.tenant_id, self.conversation_id, self.user_id)
             stt = await self.stt.open(profile.identity.language)
         except AppError as exc:
             await self._send_error(exc.code, exc.message)
@@ -93,7 +95,7 @@ class VoiceSession:
 
     async def _answer(self, user_text: str) -> None:
         try:
-            replies = self.service.reply_stream(self.tenant_id, self.conversation_id, user_text)
+            replies = self.service.reply_stream(self.tenant_id, self.conversation_id, user_text, self.user_id)
             async with contextlib.aclosing(replies), contextlib.aclosing(sentences(replies)) as chunks:
                 async for sentence in chunks:
                     await self._speak(sentence)

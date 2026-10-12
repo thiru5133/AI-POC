@@ -3,7 +3,10 @@ import pytest
 from app.auth.ratelimit import login_limiter
 from app.auth.security import hash_password
 from app.core.config import get_settings
-from app.models import DomainProfileRow, RefreshToken, Tenant, User
+from app.auth.security import utcnow
+from app.models import RefreshToken, User
+
+from .conftest import otp_from
 
 PASSWORD = "correct-horse-1"
 SUPER_EMAIL = "root@example.com"
@@ -24,23 +27,17 @@ def superadmin(session_factory):
                 password_hash=hash_password(PASSWORD),
                 role="superadmin",
                 status="active",
+                email_verified_at=utcnow(),
             )
         )
         session.commit()
 
 
-def register(client, email="admin@example.com", name="Asha", organization="Acme Hotel"):
-    return client.post(
-        "/api/auth/register", json={"name": name, "email": email, "organizationName": organization}
-    )
+def register(client, email="customer@example.com", name="Asha", password=PASSWORD):
+    return client.post("/api/auth/register", json={"name": name, "email": email, "password": password})
 
 
-def emailed_password(outbox, to="admin@example.com") -> str:
-    body = next(b for t, _, b in reversed(outbox.sent) if t == to)
-    return next(line.split(": ", 1)[1] for line in body.splitlines() if line.startswith("Password: "))
-
-
-def login(client, email="admin@example.com", password=PASSWORD):
+def login(client, email="customer@example.com", password=PASSWORD):
     return client.post("/api/auth/login", json={"identifier": email, "password": password})
 
 
@@ -48,86 +45,91 @@ def bearer(resp):
     return {"Authorization": f"Bearer {resp.json()['accessToken']}"}
 
 
-def pending_id(client, headers):
-    return client.get("/api/admin/onboarding-requests", headers=headers).json()[0]["id"]
+def test_signup_requires_the_emailed_code_before_any_session(client, outbox):
+    created = register(client)
+    assert created.status_code == 201
+    assert created.json()["role"] == "user" and created.json()["tenantId"] is None
+    assert outbox.sent[-1][0] == "customer@example.com"
+
+    # Even with the right password, an unverified account gets no session: a code is emailed instead.
+    first = login(client)
+    assert first.status_code == 200
+    assert first.json() == {"accessToken": None, "user": None, "otpRequired": True, "email": "customer@example.com"}
+    assert "refresh_token" not in client.cookies
+
+    bad = client.post("/api/auth/verify-otp", json={"email": "customer@example.com", "code": "000000"})
+    assert bad.status_code == 401
+    ok = client.post("/api/auth/verify-otp", json={"email": "customer@example.com", "code": otp_from(outbox, "customer@example.com")})
+    assert ok.status_code == 200 and ok.json()["user"]["role"] == "user"
+    assert client.get("/api/auth/me", headers=bearer(ok)).json()["email"] == "customer@example.com"
+
+    # Verified once: later logins go straight in, with no code.
+    again = login(client)
+    assert again.json()["otpRequired"] is False and again.json()["accessToken"]
 
 
-def test_register_then_blocked_until_approved(client, superadmin, outbox, session_factory):
-    assert register(client).status_code == 202
-    # No password exists until approval, so nothing can log in yet (and the failure leaks nothing).
-    assert login(client).status_code == 401
-
-    sa = login(client, SUPER_EMAIL)
-    assert sa.status_code == 200
-    headers = bearer(sa)
-    requests = client.get("/api/admin/onboarding-requests", headers=headers).json()
-    assert [r["email"] for r in requests] == ["admin@example.com"]
-
-    approved = client.post(f"/api/admin/onboarding-requests/{requests[0]['id']}/approve", headers=headers)
-    assert approved.status_code == 200 and approved.json()["status"] == "active"
-
-    assert [t for t, _, _ in outbox.sent] == ["admin@example.com"]
-    password = emailed_password(outbox)
-    assert login(client, password=PASSWORD).status_code == 401  # the signup never had a usable password
-
-    ok = login(client, password=password)
-    assert ok.status_code == 200
-    assert ok.json()["user"]["role"] == "admin"
-    tenant_id = ok.json()["user"]["tenantId"]
-    assert tenant_id != get_settings().default_tenant_id  # own organization, not the shared demo one
-    with session_factory() as session:
-        tenant = session.get(Tenant, tenant_id)
-        assert tenant.name == "Acme Hotel"
-        profile = session.query(DomainProfileRow).filter_by(tenant_id=tenant_id).one()
-        assert profile.config["identity"]["organizationName"] == "Acme Hotel"
-    me = client.get("/api/auth/me", headers=bearer(ok))
-    assert me.json()["email"] == "admin@example.com"
-
-
-def test_reject_path(client, superadmin, outbox):
+def test_otp_cannot_be_reused_or_brute_forced(client, outbox):
     register(client)
-    headers = bearer(login(client, SUPER_EMAIL))
-    rid = pending_id(client, headers)
-    rejected = client.post(
-        f"/api/admin/onboarding-requests/{rid}/reject", headers=headers, json={"reason": "Not a customer"}
-    )
-    assert rejected.json()["status"] == "rejected"
-    assert rejected.json()["rejectionReason"] == "Not a customer"
-    assert login(client).status_code == 401
-    assert outbox.sent == []  # rejected applicants get no credentials
-    # already reviewed
-    assert client.post(f"/api/admin/onboarding-requests/{rid}/approve", headers=headers).status_code == 409
+    code = otp_from(outbox, "customer@example.com")
+    assert client.post("/api/auth/verify-otp", json={"email": "customer@example.com", "code": code}).status_code == 200
+    assert client.post("/api/auth/verify-otp", json={"email": "customer@example.com", "code": code}).status_code == 401
+
+    register(client, email="b@example.com")
+    good = otp_from(outbox, "b@example.com")
+    wrong = "000000" if good != "000000" else "111111"
+    for _ in range(5):
+        assert client.post("/api/auth/verify-otp", json={"email": "b@example.com", "code": wrong}).status_code == 401
+    # After too many wrong guesses even the right code is refused (it is throttled / burnt).
+    assert client.post("/api/auth/verify-otp", json={"email": "b@example.com", "code": good}).status_code in (401, 429)
+
+
+def test_expired_otp_is_rejected_and_resend_issues_a_new_one(client, outbox, session_factory):
+    from datetime import timedelta
+
+    from app.models import EmailOtp
+
+    register(client)
+    with session_factory() as session:
+        for otp in session.query(EmailOtp).all():
+            otp.expires_at = utcnow() - timedelta(minutes=1)
+            otp.created_at = utcnow() - timedelta(minutes=5)
+        session.commit()
+    old = otp_from(outbox, "customer@example.com")
+    assert client.post("/api/auth/verify-otp", json={"email": "customer@example.com", "code": old}).status_code == 401
+
+    assert client.post("/api/auth/resend-otp", json={"email": "customer@example.com"}).status_code == 202
+    fresh = otp_from(outbox, "customer@example.com")
+    assert client.post("/api/auth/verify-otp", json={"email": "customer@example.com", "code": fresh}).status_code == 200
+    # Unknown addresses look the same as known ones.
+    assert client.post("/api/auth/resend-otp", json={"email": "ghost@example.com"}).status_code == 202
+
+
+def test_signup_fails_cleanly_when_the_code_cannot_be_emailed(client, outbox, session_factory):
+    outbox.fail = True
+    assert register(client).status_code >= 400
+    with session_factory() as session:
+        assert session.query(User).filter_by(email="customer@example.com").count() == 0
 
 
 def test_duplicate_email_is_409_and_case_insensitive(client):
-    assert register(client).status_code == 202
-    assert register(client, email="ADMIN@example.com").status_code == 409
+    assert register(client).status_code == 201
+    assert register(client, email="CUSTOMER@example.com").status_code == 409
 
 
-def test_login_by_name_is_case_and_space_insensitive(client, superadmin):
-    assert login(client, "  root ").status_code == 200  # seeded name is "Root"
-    assert login(client, "root").status_code == 200
-    assert login(client, "ROOT").json()["user"]["email"] == SUPER_EMAIL
+def test_customers_may_share_a_name(client):
+    assert register(client, name="Asha Rao").status_code == 201
+    assert register(client, email="other@example.com", name="asha   RAO").status_code == 201
 
 
-def test_login_by_name_before_approval_is_rejected(client):
+def test_login_is_by_email_only(client):
     register(client, name="Asha Rao")
-    assert login(client, "asha  rao").status_code == 401
-
-
-def test_duplicate_name_is_409_case_insensitive(client):
-    assert register(client, name="Asha Rao").status_code == 202
-    dup = register(client, email="other@example.com", name="asha   RAO")
-    assert dup.status_code == 409
-    assert dup.json()["error"]["message"] == "That name is already taken"
-
-
-def test_name_cannot_contain_at_sign(client):
-    assert register(client, name="a@b.com").status_code == 422
+    assert login(client, "Asha Rao").status_code == 401
+    assert login(client, "  CUSTOMER@example.com ").json()["otpRequired"] is True
 
 
 def test_register_validation(client):
-    assert register(client, organization="   ").status_code == 422
+    assert register(client, name="   ").status_code == 422
+    assert register(client, password="short").status_code == 422
     assert client.post("/api/auth/register", json={"name": "A", "email": "a@example.com"}).status_code == 422
     assert register(client, email="not-an-email").status_code == 422
 
@@ -148,16 +150,13 @@ def test_login_rate_limited_after_repeated_failures(client):
     assert login(client).status_code == 429  # even the right password is throttled for now
 
 
-def test_admin_routes_require_superadmin(client, superadmin, session_factory, outbox):
-    assert client.get("/api/admin/onboarding-requests").status_code == 401
+def test_superadmin_routes_require_superadmin(client, superadmin, outbox):
+    assert client.get("/api/superadmin/businesses").status_code == 401
     register(client)
-    sa_headers = bearer(login(client, SUPER_EMAIL))
-    client.post(
-        f"/api/admin/onboarding-requests/{pending_id(client, sa_headers)}/approve", headers=sa_headers
-    )
-    admin_headers = bearer(login(client, password=emailed_password(outbox)))
-    forbidden = client.get("/api/admin/onboarding-requests", headers=admin_headers)
+    verified = client.post("/api/auth/verify-otp", json={"email": "customer@example.com", "code": otp_from(outbox, "customer@example.com")})
+    forbidden = client.get("/api/superadmin/businesses", headers=bearer(verified))
     assert forbidden.status_code == 403 and forbidden.json()["error"]["code"] == "forbidden"
+    assert client.get("/api/superadmin/businesses", headers=bearer(login(client, SUPER_EMAIL))).status_code == 200
 
 
 def test_bad_token_rejected(client):
@@ -215,28 +214,3 @@ def test_seed_creates_superadmin_once(session_factory, monkeypatch):
         monkeypatch.delenv("SUPERADMIN_EMAIL")
         monkeypatch.delenv("SUPERADMIN_PASSWORD")
         get_settings.cache_clear()
-
-
-def test_approval_is_rolled_back_when_the_email_cannot_be_sent(client, superadmin, outbox, session_factory):
-    register(client)
-    headers = bearer(login(client, SUPER_EMAIL))
-    rid = pending_id(client, headers)
-    outbox.fail = True
-    failed = client.post(f"/api/admin/onboarding-requests/{rid}/approve", headers=headers)
-    assert failed.status_code >= 400
-    with session_factory() as session:
-        assert session.query(Tenant).count() == 1  # only the demo tenant: nothing half-created
-        assert session.get(User, rid).status == "pending"
-
-    outbox.fail = False  # retry succeeds
-    assert client.post(f"/api/admin/onboarding-requests/{rid}/approve", headers=headers).status_code == 200
-    assert login(client, password=emailed_password(outbox)).status_code == 200
-
-
-def test_credentials_email_contents(client, superadmin, outbox):
-    register(client, organization="Acme Hotel")
-    headers = bearer(login(client, SUPER_EMAIL))
-    client.post(f"/api/admin/onboarding-requests/{pending_id(client, headers)}/approve", headers=headers)
-    (to, subject, body) = outbox.sent[0]
-    assert to == "admin@example.com" and "Acme Hotel" in subject
-    assert "http://localhost:5173/login" in body and "Email: admin@example.com" in body

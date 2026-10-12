@@ -23,6 +23,15 @@ def utcnow() -> datetime:
 _PASSWORD_ALPHABET = "abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 
 
+def generate_otp() -> str:
+    return f"{secrets.randbelow(1_000_000):06d}"
+
+
+def hash_otp(user_id: str, code: str) -> str:
+    # The code is short, so it is bound to the user; brute force is stopped by the attempt limit, not by the hash.
+    return hashlib.sha256(f"{user_id}:{code}".encode()).hexdigest()
+
+
 def generate_password(length: int = 14) -> str:
     return "".join(secrets.choice(_PASSWORD_ALPHABET) for _ in range(length))
 

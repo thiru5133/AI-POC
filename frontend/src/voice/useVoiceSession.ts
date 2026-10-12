@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ApiError } from "../services/apiClient";
+import { ApiError, session as authSession } from "../services/apiClient";
 import { conversationService } from "../services/conversationService";
 import type { CallStatus, ServerEvent, TranscriptEntry } from "../types";
 import { BrowserDeepgramClient } from "./BrowserDeepgramClient";
@@ -10,7 +10,16 @@ export interface UseVoiceSessionOptions {
   toWsUrl?: (path: string) => string;
 }
 
-const defaultWsUrl = (path: string) => `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}${path}`;
+/** The server derives an admin's organization from this token; a customer also names the business they chose. */
+const defaultWsUrl = (path: string) => {
+  const token = authSession.getToken();
+  const params = new URLSearchParams();
+  if (token) params.set("token", token);
+  const business = authSession.getBusiness();
+  if (business) params.set("business", business);
+  const query = params.size ? `?${params}` : "";
+  return `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}${path}${query}`;
+};
 
 let counter = 0;
 const nextId = () => `e${++counter}`;

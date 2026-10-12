@@ -1,7 +1,14 @@
 from fastapi import APIRouter, Cookie, Depends, Request, Response
 
 from app.api import deps
-from app.api.schemas import LoginRequest, LoginResponse, RegisterRequest, RegisterResponse, UserOut
+from app.api.schemas import (
+    LoginRequest,
+    LoginResponse,
+    RegisterRequest,
+    ResendOtpRequest,
+    UserOut,
+    VerifyOtpRequest,
+)
 from app.auth.service import AuthService
 from app.core.config import Settings, get_settings
 from app.core.errors import UnauthorizedError
@@ -31,10 +38,10 @@ def _set_refresh_cookie(response: Response, raw: str, settings: Settings) -> Non
     )
 
 
-@router.post("/register", response_model=RegisterResponse, status_code=202)
+@router.post("/register", response_model=UserOut, status_code=201)
 async def register(body: RegisterRequest, auth: AuthService = Depends(deps.get_auth_service)):
-    await auth.register(body.name, body.email, body.organization_name)
-    return RegisterResponse()
+    """Sign-up. A code is emailed to confirm the address; entering it (POST /verify-otp) starts the session."""
+    return _user_out(await auth.register(body.name, body.email, body.password))
 
 
 @router.post("/login", response_model=LoginResponse)
@@ -47,8 +54,31 @@ async def login(
 ):
     client = request.client.host if request.client else "unknown"
     user, access, raw = await auth.login(body.identifier, body.password, client)
+    if access is None or raw is None:
+        # First login: a code was emailed; the session only starts once it is entered (POST /verify-otp).
+        return LoginResponse(otp_required=True, email=user.email)
     _set_refresh_cookie(response, raw, settings)
     return LoginResponse(access_token=access, user=_user_out(user))
+
+
+@router.post("/verify-otp", response_model=LoginResponse)
+async def verify_otp(
+    body: VerifyOtpRequest,
+    request: Request,
+    response: Response,
+    auth: AuthService = Depends(deps.get_auth_service),
+    settings: Settings = Depends(get_settings),
+):
+    client = request.client.host if request.client else "unknown"
+    user, access, raw = await auth.verify_otp(body.email, body.code, client)
+    _set_refresh_cookie(response, raw, settings)
+    return LoginResponse(access_token=access, user=_user_out(user))
+
+
+@router.post("/resend-otp", status_code=202)
+async def resend_otp(body: ResendOtpRequest, auth: AuthService = Depends(deps.get_auth_service)):
+    await auth.resend_otp(body.email)
+    return {"status": "sent"}
 
 
 @router.post("/refresh", response_model=LoginResponse)

@@ -34,22 +34,22 @@ class ConversationService:
         self.engine = engine
 
     # ---- sync DB helpers (run in a worker thread from async callers) ----
-    def _start(self, tenant_id: str, profile_id: str) -> tuple[str, str]:
+    def _start(self, tenant_id: str, user_id: str | None) -> tuple[str, str]:
         with self._sf() as session:
-            profile_row = DomainProfileRepository(session, tenant_id).get(profile_id)
+            profile_row = DomainProfileRepository(session, tenant_id).get_active()
             if profile_row is None:
                 raise NotFoundError("Domain profile not found")
             profile = parse_profile(profile_row.config)
-            repo = ConversationRepository(session, tenant_id)
-            conv = repo.add(Conversation(domain_profile_id=profile_id, context={}))
+            repo = ConversationRepository(session, tenant_id, user_id)
+            conv = repo.add(Conversation(domain_profile_id=profile_row.id, context={}))
             greeting = profile.identity.greeting
             repo.add_message(conv.id, "assistant", greeting)
             session.commit()
             return conv.id, greeting
 
-    def _load(self, tenant_id: str, conversation_id: str) -> TurnState:
+    def _load(self, tenant_id: str, conversation_id: str, user_id: str | None = None) -> TurnState:
         with self._sf() as session:
-            repo = ConversationRepository(session, tenant_id)
+            repo = ConversationRepository(session, tenant_id, user_id)
             conv = repo.get(conversation_id)
             if conv is None:
                 raise NotFoundError("Conversation not found")
@@ -64,9 +64,9 @@ class ConversationService:
             ]
             return TurnState(profile, ctx, _normalize_history(history))
 
-    def _save_turn(self, tenant_id: str, ctx: ConversationContext, user_text: str, reply: str) -> None:
+    def _save_turn(self, tenant_id: str, user_id: str | None, ctx: ConversationContext, user_text: str, reply: str) -> None:
         with self._sf() as session:
-            repo = ConversationRepository(session, tenant_id)
+            repo = ConversationRepository(session, tenant_id, user_id)
             conv = repo.get(ctx.session_id)
             repo.add_message(ctx.session_id, "user", user_text, intent=ctx.intent)
             if reply.strip():
@@ -74,9 +74,14 @@ class ConversationService:
             conv.context = ctx.model_dump(exclude={"session_id", "tenant_id", "domain_profile_id"})
             session.commit()
 
-    def _get(self, tenant_id: str, conversation_id: str) -> dict[str, Any]:
+    def _list(self, tenant_id: str, user_id: str | None, limit: int, offset: int, include_empty: bool) -> dict[str, Any]:
         with self._sf() as session:
-            repo = ConversationRepository(session, tenant_id)
+            items, total = ConversationRepository(session, tenant_id, user_id).list_summaries(limit, offset, include_empty)
+            return {"items": items, "total": total, "limit": limit, "offset": offset}
+
+    def _get(self, tenant_id: str, conversation_id: str, user_id: str | None) -> dict[str, Any]:
+        with self._sf() as session:
+            repo = ConversationRepository(session, tenant_id, user_id)
             conv = repo.get(conversation_id)
             if conv is None:
                 raise NotFoundError("Conversation not found")
@@ -84,6 +89,7 @@ class ConversationService:
                 "id": conv.id,
                 "domain_profile_id": conv.domain_profile_id,
                 "status": conv.status,
+                "started_at": conv.started_at,
                 "context": conv.context or {},
                 "messages": [
                     {"role": m.role, "text": m.content, "intent": m.intent, "created_at": m.created_at}
@@ -92,18 +98,26 @@ class ConversationService:
             }
 
     # ---- async API ----
-    async def start(self, tenant_id: str, profile_id: str) -> tuple[str, str]:
-        return await asyncio.to_thread(self._start, tenant_id, profile_id)
+    # `user_id` is set when the caller is a customer: they only see conversations they started themselves.
+    async def start(self, tenant_id: str, user_id: str | None = None) -> tuple[str, str]:
+        return await asyncio.to_thread(self._start, tenant_id, user_id)
 
-    async def get(self, tenant_id: str, conversation_id: str) -> dict[str, Any]:
-        return await asyncio.to_thread(self._get, tenant_id, conversation_id)
+    async def list(
+        self, tenant_id: str, limit: int = 30, offset: int = 0, include_empty: bool = False, user_id: str | None = None
+    ) -> dict[str, Any]:
+        return await asyncio.to_thread(self._list, tenant_id, user_id, limit, offset, include_empty)
 
-    async def get_profile(self, tenant_id: str, conversation_id: str) -> DomainProfile:
-        return (await asyncio.to_thread(self._load, tenant_id, conversation_id)).profile
+    async def get(self, tenant_id: str, conversation_id: str, user_id: str | None = None) -> dict[str, Any]:
+        return await asyncio.to_thread(self._get, tenant_id, conversation_id, user_id)
 
-    async def reply_stream(self, tenant_id: str, conversation_id: str, user_text: str) -> AsyncIterator[str]:
+    async def get_profile(self, tenant_id: str, conversation_id: str, user_id: str | None = None) -> DomainProfile:
+        return (await asyncio.to_thread(self._load, tenant_id, conversation_id, user_id)).profile
+
+    async def reply_stream(
+        self, tenant_id: str, conversation_id: str, user_text: str, user_id: str | None = None
+    ) -> AsyncIterator[str]:
         """Streams the assistant reply; persists the turn (also when cancelled mid-reply, e.g. barge-in)."""
-        state = await asyncio.to_thread(self._load, tenant_id, conversation_id)
+        state = await asyncio.to_thread(self._load, tenant_id, conversation_id, user_id)
         collected: list[str] = []
         try:
             async for delta in self.engine.run_turn(state.profile, state.ctx, state.history, user_text):
@@ -111,11 +125,13 @@ class ConversationService:
                 yield delta
         finally:
             await asyncio.shield(
-                asyncio.to_thread(self._save_turn, tenant_id, state.ctx, user_text, "".join(collected))
+                asyncio.to_thread(self._save_turn, tenant_id, user_id, state.ctx, user_text, "".join(collected))
             )
 
-    async def reply(self, tenant_id: str, conversation_id: str, user_text: str) -> str:
-        return "".join([d async for d in self.reply_stream(tenant_id, conversation_id, user_text)]).strip()
+    async def reply(self, tenant_id: str, conversation_id: str, user_text: str, user_id: str | None = None) -> str:
+        return "".join(
+            [d async for d in self.reply_stream(tenant_id, conversation_id, user_text, user_id)]
+        ).strip()
 
 
 def _normalize_history(history: list[dict[str, Any]]) -> list[dict[str, Any]]:

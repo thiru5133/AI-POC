@@ -4,7 +4,7 @@ import { ProtectedRoute } from "../auth/ProtectedRoute";
 import { MenuIcon } from "../components/icons";
 import { Sidebar } from "./Sidebar";
 
-/** Authenticated layout: sidebar + content. Every route nested inside requires a logged-in admin or superadmin. */
+/** Authenticated layout: sidebar + content. Every route nested inside requires a logged-in user of any role. */
 export function AppShell() {
   const [open, setOpen] = useState(false);
   const { pathname } = useLocation();
@@ -12,7 +12,7 @@ export function AppShell() {
   useEffect(() => setOpen(false), [pathname]);
 
   return (
-    <ProtectedRoute roles={["admin", "superadmin"]}>
+    <ProtectedRoute roles={["admin", "superadmin", "user"]}>
       <div className="shell">
         <Sidebar open={open} onNavigate={() => setOpen(false)} />
         {open && <button type="button" className="scrim" aria-label="Close menu" onClick={() => setOpen(false)} />}

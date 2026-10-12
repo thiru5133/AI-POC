@@ -8,6 +8,7 @@ import { formatDateTime } from "../../utils/date";
 import { UserDetailPanel } from "./UserDetailPanel";
 
 const PAGE_SIZE = 20;
+const roleLabel = (role: UserRole) => ({ superadmin: "Super admin", admin: "Business admin", user: "User" })[role];
 const TABS: { value: RequestStatus | "all"; label: string }[] = [
   { value: "active", label: "Active" },
   { value: "pending", label: "Pending" },
@@ -61,7 +62,7 @@ export function UsersPage() {
 
   return (
     <>
-      <PageHeader title="Users" subtitle="Everyone with access to the admin console" />
+      <PageHeader title="Users" subtitle="Business admins and users on the platform" />
 
       <div className="card table-card">
         <div className="filters">
@@ -100,7 +101,8 @@ export function UsersPage() {
               }}
             >
               <option value="all">All roles</option>
-              <option value="admin">Admin</option>
+              <option value="admin">Business admin</option>
+              <option value="user">User</option>
               <option value="superadmin">Super admin</option>
             </select>
           </div>
@@ -134,7 +136,7 @@ export function UsersPage() {
                       </button>
                     </td>
                     <td>{u.email}</td>
-                    <td>{u.role === "superadmin" ? "Super admin" : "Admin"}</td>
+                    <td>{roleLabel(u.role)}</td>
                     <td>
                       <StatusBadge status={u.status} />
                     </td>

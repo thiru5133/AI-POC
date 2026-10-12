@@ -1,4 +1,4 @@
-import type { OnboardingRequest, RequestStatus, UserDetail, UserList, UserRole } from "../types";
+import type { Business, Domain, RequestStatus, UserDetail, UserList, UserRole } from "../types";
 import { apiFetch } from "./apiClient";
 
 export interface UserQuery {
@@ -9,17 +9,25 @@ export interface UserQuery {
   offset?: number;
 }
 
+export interface NewBusiness {
+  name: string;
+  domainId: string;
+  adminName: string;
+  adminEmail: string;
+}
+
 export const adminService = {
-  listRequests: (status: RequestStatus = "pending") =>
-    apiFetch<OnboardingRequest[]>(`/api/admin/onboarding-requests?status=${status}`),
+  listDomains: () => apiFetch<Domain[]>("/api/businesses/domains"),
 
-  approve: (id: string) =>
-    apiFetch<OnboardingRequest>(`/api/admin/onboarding-requests/${id}/approve`, { method: "POST" }),
+  listBusinesses: (q = "") => apiFetch<Business[]>(`/api/superadmin/businesses${q ? `?q=${encodeURIComponent(q)}` : ""}`),
 
-  reject: (id: string, reason?: string) =>
-    apiFetch<OnboardingRequest>(`/api/admin/onboarding-requests/${id}/reject`, {
-      method: "POST",
-      body: JSON.stringify({ reason: reason || null }),
+  createBusiness: (business: NewBusiness) =>
+    apiFetch<Business>("/api/superadmin/businesses", { method: "POST", body: JSON.stringify(business) }),
+
+  setBusinessActive: (id: string, isActive: boolean) =>
+    apiFetch<Business>(`/api/superadmin/businesses/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ isActive }),
     }),
 
   listUsers(query: UserQuery = {}) {
@@ -28,8 +36,8 @@ export const adminService = {
       if (value !== undefined && value !== "") params.set(key, String(value));
     }
     const qs = params.toString();
-    return apiFetch<UserList>(`/api/admin/users${qs ? `?${qs}` : ""}`);
+    return apiFetch<UserList>(`/api/superadmin/users${qs ? `?${qs}` : ""}`);
   },
 
-  getUser: (id: string) => apiFetch<UserDetail>(`/api/admin/users/${encodeURIComponent(id)}`),
+  getUser: (id: string) => apiFetch<UserDetail>(`/api/superadmin/users/${encodeURIComponent(id)}`),
 };

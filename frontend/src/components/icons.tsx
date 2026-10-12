@@ -75,3 +75,15 @@ export const UsersIcon = () => (
     <path d="M22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8" />
   </Icon>
 );
+
+export const PlugIcon = () => (
+  <Icon>
+    <path d="M9 2v6M15 2v6M6 8h12v3a6 6 0 0 1-12 0V8zM12 17v5" />
+  </Icon>
+);
+
+export const ChatIcon = () => (
+  <Icon>
+    <path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 8.6 8.6 0 0 1-3.6-.8L3 21l1.9-5.1A8.4 8.4 0 1 1 21 11.5z" />
+  </Icon>
+);

@@ -28,20 +28,17 @@ describe("UsersPage", () => {
     session.setToken("tok");
     fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = new URL(String(input), "http://x");
-      if (url.pathname === "/api/admin/users") {
+      if (url.pathname === "/api/superadmin/users") {
         const status = url.searchParams.get("status");
         const q = url.searchParams.get("q")?.toLowerCase();
         const all = [user("1", "Asha Rao"), user("2", "Bala Kumar"), user("3", "Chitra Devi", "pending")];
         const items = all.filter((u) => (!status || u.status === status) && (!q || u.name.toLowerCase().includes(q)));
         return json({ items, total: items.length, limit: 20, offset: 0, counts: COUNTS });
       }
-      if (url.pathname === "/api/admin/users/3") {
+      if (url.pathname === "/api/superadmin/users/3") {
         return json({
           ...user("3", "Chitra Devi", "rejected"),
-          tenantName: null,
-          rejectionReason: "Not a customer",
-          reviewedByName: "Root",
-          reviewedAt: "2026-10-11T08:00:00",
+          tenantName: "Acme Hotel",
         });
       }
       return json({}, 404);
@@ -105,9 +102,8 @@ describe("UsersPage", () => {
     await userEvent.click(await screen.findByRole("button", { name: "Chitra Devi" }));
 
     const panel = await screen.findByRole("dialog", { name: "User details" });
-    expect(await within(panel).findByText("Not a customer")).toBeInTheDocument();
-    expect(within(panel).getByText("Root")).toBeInTheDocument();
-    expect(urls().at(-1)).toBe("/api/admin/users/3");
+    expect(await within(panel).findByText("Acme Hotel")).toBeInTheDocument();
+    expect(urls().at(-1)).toBe("/api/superadmin/users/3");
 
     await userEvent.click(within(panel).getByRole("button", { name: "Close" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();

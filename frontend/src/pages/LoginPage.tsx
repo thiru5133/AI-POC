@@ -21,13 +21,14 @@ export function LoginPage() {
     setError(null);
     setBusy(true);
     try {
-      const next = await login(identifier, password);
-      navigate(from ?? homePathFor(next), { replace: true });
-    } catch (err) {
-      if (err instanceof ApiError && err.code === "account_pending") {
-        navigate("/pending", { replace: true, state: { email: identifier.includes("@") ? identifier : undefined } });
+      const result = await login(identifier, password);
+      if ("otpRequired" in result) {
+        // First login: a code was emailed; entering it finishes the login.
+        navigate("/verify", { replace: true, state: { email: result.email } });
         return;
       }
+      navigate(from ?? homePathFor(result.user), { replace: true });
+    } catch (err) {
       setError(err instanceof ApiError ? err.message : "Login failed");
     } finally {
       setBusy(false);
@@ -38,9 +39,9 @@ export function LoginPage() {
     <form className="card form" onSubmit={onSubmit}>
       <h1>Log in</h1>
       <label>
-        Email or name
+        Email
         <input
-          type="text"
+          type="email"
           autoComplete="username"
           required
           value={identifier}
@@ -66,7 +67,7 @@ export function LoginPage() {
         {busy ? "Signing in…" : "Log in"}
       </button>
       <p className="muted">
-        New here? <Link to="/register">Request admin access</Link>
+        New here? <Link to="/register">Sign up</Link>
       </p>
     </form>
   );

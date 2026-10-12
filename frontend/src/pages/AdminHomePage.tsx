@@ -9,9 +9,9 @@ export function AdminHomePage() {
       <PageHeader title="Dashboard" subtitle={`Welcome back, ${user?.name ?? ""}`} />
       <div className="card">
         <h2>Get started</h2>
-        <p className="muted">Your admin tools will appear here. In the meantime you can try the receptionist.</p>
-        <Link to="/call" className="button primary">
-          Open live call
+        <p className="muted">Connect your systems under MCP integration, review what customers asked under Conversations, or try the assistant yourself.</p>
+        <Link to="/chat" className="button primary">
+          Try your assistant
         </Link>
       </div>
     </>

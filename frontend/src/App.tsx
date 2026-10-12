@@ -1,15 +1,25 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import { homePathFor, useAuth } from "./auth/AuthContext";
 import { ProtectedRoute } from "./auth/ProtectedRoute";
+import { BusinessPicker } from "./components/BusinessPicker";
 import { AppShell } from "./layouts/AppShell";
 import { PublicLayout } from "./layouts/PublicLayout";
 import { AdminHomePage } from "./pages/AdminHomePage";
-import { CallPage } from "./pages/CallPage";
+import { ChatPage } from "./pages/ChatPage";
+import { ConversationsPage } from "./pages/ConversationsPage";
 import { LoginPage } from "./pages/LoginPage";
-import { PendingApprovalPage } from "./pages/PendingApprovalPage";
+import { McpPage } from "./pages/McpPage";
 import { RegisterPage } from "./pages/RegisterPage";
-import { RequestsPage } from "./pages/superadmin/RequestsPage";
+import { VerifyOtpPage } from "./pages/VerifyOtpPage";
+import { BusinessesPage } from "./pages/superadmin/BusinessesPage";
 import { UsersPage } from "./pages/superadmin/UsersPage";
+
+/** A customer's history is per business, so they pick one first; an admin's is their own business's. */
+function ConversationsRoute() {
+  const { user } = useAuth();
+  if (user?.role !== "user") return <ConversationsPage />;
+  return <BusinessPicker>{(businessId) => <ConversationsPage key={businessId} />}</BusinessPicker>;
+}
 
 /** "/" has no page of its own: send people to their home, or to the login screen. */
 function RootRedirect() {
@@ -26,14 +36,20 @@ export function App() {
       <Route element={<PublicLayout />}>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
-        <Route path="/pending" element={<PendingApprovalPage />} />
+        <Route path="/verify" element={<VerifyOtpPage />} />
       </Route>
 
       <Route element={<AppShell />}>
-        <Route path="/admin" element={<AdminHomePage />} />
-        <Route path="/call" element={<CallPage />} />
+        <Route element={<ProtectedRoute roles={["admin"]} />}>
+          <Route path="/admin" element={<AdminHomePage />} />
+          <Route path="/mcp" element={<McpPage />} />
+        </Route>
+        <Route element={<ProtectedRoute roles={["admin", "user"]} />}>
+          <Route path="/chat" element={<ChatPage />} />
+          <Route path="/conversations/:id?" element={<ConversationsRoute />} />
+        </Route>
         <Route element={<ProtectedRoute roles={["superadmin"]} />}>
-          <Route path="/superadmin/requests" element={<RequestsPage />} />
+          <Route path="/superadmin/businesses" element={<BusinessesPage />} />
           <Route path="/superadmin/users" element={<UsersPage />} />
         </Route>
       </Route>

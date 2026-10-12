@@ -10,14 +10,41 @@ export class ApiError extends Error {
   }
 }
 
+const BUSINESS_KEY = "business";
+
+function readBusiness(): string | null {
+  try {
+    return localStorage.getItem(BUSINESS_KEY);
+  } catch {
+    return null;
+  }
+}
+
 // The access token lives in memory only (never localStorage); the httpOnly refresh cookie restores it.
 let accessToken: string | null = null;
+let businessId: string | null = readBusiness();
 let refreshing: Promise<LoginResponse | null> | null = null;
 let listener: ((user: AuthUser | null) => void) | null = null;
 
 export const session = {
   setToken(token: string | null) {
     accessToken = token;
+  },
+  getToken(): string | null {
+    return accessToken;
+  },
+  /** The business a customer is talking to; sent with every request (admins always act for their own). */
+  setBusiness(id: string | null) {
+    businessId = id;
+    try {
+      if (id) localStorage.setItem(BUSINESS_KEY, id);
+      else localStorage.removeItem(BUSINESS_KEY);
+    } catch {
+      /* storage unavailable: the choice just won't survive a reload */
+    }
+  },
+  getBusiness(): string | null {
+    return businessId;
   },
   /** Notified when a silent refresh succeeds (user) or fails (null) so the UI can follow. */
   onChange(fn: (user: AuthUser | null) => void) {
@@ -32,6 +59,7 @@ async function send(path: string, init?: RequestInit): Promise<Response> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+    ...(businessId ? { "X-Business-Id": businessId } : {}),
     ...(init?.headers as Record<string, string> | undefined),
   };
   try {

@@ -53,21 +53,11 @@ export function UserDetailPanel({ userId, onClose }: { userId: string; onClose: 
             <dt>Email</dt>
             <dd>{user.email}</dd>
             <dt>Role</dt>
-            <dd>{user.role === "superadmin" ? "Super admin" : "Admin"}</dd>
-            <dt>Tenant</dt>
+            <dd>{{ superadmin: "Super admin", admin: "Business admin", user: "User" }[user.role]}</dd>
+            <dt>Business</dt>
             <dd>{user.tenantName ?? "—"}</dd>
-            <dt>Requested</dt>
+            <dt>Joined</dt>
             <dd>{formatDateTime(user.createdAt)}</dd>
-            <dt>Reviewed by</dt>
-            <dd>{user.reviewedByName ?? "—"}</dd>
-            <dt>Reviewed at</dt>
-            <dd>{formatDateTime(user.reviewedAt)}</dd>
-            {user.rejectionReason && (
-              <>
-                <dt>Rejection reason</dt>
-                <dd>{user.rejectionReason}</dd>
-              </>
-            )}
             <dt>User ID</dt>
             <dd className="mono">{user.id}</dd>
           </dl>

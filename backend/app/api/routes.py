@@ -1,13 +1,13 @@
 from collections.abc import Callable
 
-from fastapi import APIRouter, Depends, WebSocket
+from fastapi import APIRouter, Depends, Query, WebSocket
 from sqlalchemy.orm import Session
 
 from app.api import deps
 from app.api.schemas import (
     AudioInfo,
+    ConversationList,
     ConversationOut,
-    CreateConversationRequest,
     CreateConversationResponse,
     DomainProfileOut,
     SendMessageRequest,
@@ -16,7 +16,6 @@ from app.api.schemas import (
     VoiceSessionResponse,
 )
 from app.conversation.service import ConversationService
-from app.core.config import Settings, get_settings
 from app.core.errors import NotFoundError
 from app.repositories.conversations import DomainProfileRepository
 from app.voice.base import STTProvider, TTSProvider, VoiceProvider
@@ -32,14 +31,10 @@ async def health():
 
 @router.post("/api/conversations", response_model=CreateConversationResponse)
 async def create_conversation(
-    body: CreateConversationRequest,
-    tenant_id: str = Depends(deps.get_tenant_id),
-    settings: Settings = Depends(get_settings),
+    scope: deps.ChatScope = Depends(deps.get_chat_scope),
     service: ConversationService = Depends(deps.get_service),
 ):
-    conv_id, greeting = await service.start(
-        body.tenant_id or tenant_id, body.domain_profile_id or settings.default_domain_profile_id
-    )
+    conv_id, greeting = await service.start(scope.tenant_id, scope.user_id)
     return CreateConversationResponse(id=conv_id, greeting=greeting)
 
 
@@ -47,30 +42,42 @@ async def create_conversation(
 async def send_message(
     conversation_id: str,
     body: SendMessageRequest,
-    tenant_id: str = Depends(deps.get_tenant_id),
+    scope: deps.ChatScope = Depends(deps.get_chat_scope),
     service: ConversationService = Depends(deps.get_service),
 ):
-    reply = await service.reply(tenant_id, conversation_id, body.text)
+    reply = await service.reply(scope.tenant_id, conversation_id, body.text, scope.user_id)
     return SendMessageResponse(reply=reply)
+
+
+@router.get("/api/conversations", response_model=ConversationList)
+async def list_conversations(
+    limit: int = Query(30, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    include_empty: bool = Query(False, alias="includeEmpty"),
+    scope: deps.ChatScope = Depends(deps.get_chat_scope),
+    service: ConversationService = Depends(deps.get_service),
+):
+    """A business admin sees all of their business's conversations; a customer only their own."""
+    return await service.list(scope.tenant_id, limit, offset, include_empty, scope.user_id)
 
 
 @router.get("/api/conversations/{conversation_id}", response_model=ConversationOut)
 async def get_conversation(
     conversation_id: str,
-    tenant_id: str = Depends(deps.get_tenant_id),
+    scope: deps.ChatScope = Depends(deps.get_chat_scope),
     service: ConversationService = Depends(deps.get_service),
 ):
-    return await service.get(tenant_id, conversation_id)
+    return await service.get(scope.tenant_id, conversation_id, scope.user_id)
 
 
 @router.post("/api/voice/session", response_model=VoiceSessionResponse)
 async def create_voice_session(
     body: VoiceSessionRequest,
-    tenant_id: str = Depends(deps.get_tenant_id),
+    scope: deps.ChatScope = Depends(deps.get_chat_scope),
     service: ConversationService = Depends(deps.get_service),
     provider: VoiceProvider = Depends(deps.get_voice_provider),
 ):
-    await service.get(tenant_id, body.conversation_id)  # 404 if missing / other tenant
+    await service.get(scope.tenant_id, body.conversation_id, scope.user_id)  # 404 if missing / other tenant
     info = provider.create_session(body.conversation_id)
     return VoiceSessionResponse(
         conversation_id=info.conversation_id,
@@ -83,11 +90,11 @@ async def create_voice_session(
 @router.get("/api/domain-profiles/{profile_id}", response_model=DomainProfileOut)
 async def get_domain_profile(
     profile_id: str,
-    tenant_id: str = Depends(deps.get_tenant_id),
+    scope: deps.ChatScope = Depends(deps.get_chat_scope),
     sessions: Callable[[], Session] = Depends(deps.get_sessions),
 ):
     with sessions() as session:
-        row = DomainProfileRepository(session, tenant_id).get(profile_id)
+        row = DomainProfileRepository(session, scope.tenant_id).get(profile_id)
         if row is None:
             raise NotFoundError("Domain profile not found")
         return DomainProfileOut(id=row.id, name=row.name, domain_type=row.domain_type, config=row.config)
@@ -100,7 +107,6 @@ async def voice_socket(
     service: ConversationService = Depends(deps.get_service),
     stt: STTProvider = Depends(deps.get_stt),
     tts: TTSProvider = Depends(deps.get_tts),
+    scope: deps.ChatScope = Depends(deps.get_ws_chat_scope),
 ):
-    await VoiceSession(
-        websocket, service, stt, tts, deps.ws_tenant_id(websocket), conversation_id
-    ).run()
+    await VoiceSession(websocket, service, stt, tts, scope.tenant_id, conversation_id, scope.user_id).run()

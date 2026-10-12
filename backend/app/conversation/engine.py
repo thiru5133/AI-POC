@@ -6,6 +6,7 @@ from app.ai.base import LLMProvider
 from app.conversation.context import ConversationContext
 from app.conversation.prompt import build_system_prompt
 from app.domain.profile import DomainProfile
+from app.mcp.tools import McpToolSource
 from app.tools.registry import ToolRegistry
 
 
@@ -15,9 +16,16 @@ class ConversationEngine:
     Pure with respect to storage: callers pass history in and persist results themselves.
     """
 
-    def __init__(self, llm: LLMProvider, tools: ToolRegistry | None = None, max_tool_rounds: int = 4):
+    def __init__(
+        self,
+        llm: LLMProvider,
+        tools: ToolRegistry | None = None,
+        max_tool_rounds: int = 4,
+        mcp: McpToolSource | None = None,
+    ):
         self.llm = llm
         self.tools = tools or ToolRegistry()
+        self.mcp = mcp
         self.max_tool_rounds = max_tool_rounds
 
     async def run_turn(
@@ -27,8 +35,11 @@ class ConversationEngine:
         history: list[dict[str, Any]],
         user_text: str,
     ) -> AsyncIterator[str]:
-        system = build_system_prompt(profile, ctx)
-        tool_defs = self.tools.definitions_for(profile)
+        # The tenant's own MCP tools, built from that tenant's configuration only (ctx.tenant_id comes from the
+        # authenticated session, never from client input).
+        mcp_tools = await self.mcp.for_tenant(ctx.tenant_id) if self.mcp else None
+        tool_defs = self.tools.definitions_for(profile) + (mcp_tools.definitions if mcp_tools else [])
+        system = build_system_prompt(profile, ctx, tools_available=bool(tool_defs))
         messages = [*history, {"role": "user", "content": user_text}]
 
         for _ in range(self.max_tool_rounds + 1):
@@ -53,7 +64,10 @@ class ConversationEngine:
 
             results = []
             for call in calls:
-                output, is_error = await self.tools.execute(call.tool_name, ctx, call.tool_input)
+                if mcp_tools and mcp_tools.owns(call.tool_name):
+                    output, is_error = await mcp_tools.execute(call.tool_name, call.tool_input)
+                else:
+                    output, is_error = await self.tools.execute(call.tool_name, ctx, call.tool_input)
                 ctx.last_action = call.tool_name
                 results.append(
                     {

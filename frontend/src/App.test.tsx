@@ -5,7 +5,7 @@ import { App } from "./App";
 import { AuthProvider } from "./auth/AuthContext";
 import { session } from "./services/apiClient";
 
-type Role = "admin" | "superadmin" | null;
+type Role = "admin" | "superadmin" | "user" | null;
 
 function mockBackend(role: Role) {
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
@@ -40,36 +40,55 @@ describe("routing and sidebar", () => {
     expect(screen.queryByRole("navigation", { name: "Main navigation" })).not.toBeInTheDocument();
   });
 
-  it("keeps the call console off the landing page: /call needs a login", async () => {
+  it("keeps the chat off the landing page: /chat needs a login", async () => {
     mockBackend(null);
-    mountAt("/call");
+    mountAt("/chat");
     expect(await screen.findByRole("heading", { name: "Log in" })).toBeInTheDocument();
   });
 
-  it("shows admins the dashboard and live call links only", async () => {
+  it("shows business admins their dashboard, MCP, conversations and chat", async () => {
     mockBackend("admin");
     mountAt("/admin");
     expect(await screen.findByRole("heading", { name: "Dashboard" })).toBeInTheDocument();
     const nav = screen.getByRole("complementary", { name: "Main navigation" });
     expect(nav).toHaveTextContent("Dashboard");
-    expect(nav).toHaveTextContent("Live call");
-    expect(nav).not.toHaveTextContent("Onboarding requests");
+    expect(nav).toHaveTextContent("Chat & voice");
+    expect(nav).toHaveTextContent("MCP integration");
+    expect(nav).toHaveTextContent("Conversations");
+    expect(nav).not.toHaveTextContent("Businesses");
     expect(nav).toHaveTextContent("Asha Rao");
   });
 
   it("blocks admins from superadmin pages", async () => {
     mockBackend("admin");
-    mountAt("/superadmin/requests");
+    mountAt("/superadmin/businesses");
     expect(await screen.findByText("Access denied")).toBeInTheDocument();
   });
 
-  it("lands superadmins on the requests page from /", async () => {
+  it("lands superadmins on the businesses page from /", async () => {
     mockBackend("superadmin");
     mountAt("/");
-    expect(await screen.findByRole("heading", { name: "Onboarding requests" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Businesses" })).toBeInTheDocument();
     const nav = screen.getByRole("complementary", { name: "Main navigation" });
-    expect(nav).toHaveTextContent("Onboarding requests");
-    expect(nav).toHaveTextContent("Live call");
+    expect(nav).toHaveTextContent("Users");
+    expect(nav).not.toHaveTextContent("Chat & voice"); // superadmins have no business to talk to
     expect(nav).not.toHaveTextContent("Dashboard");
+  });
+
+  it("lands customers on the chat and keeps them out of admin pages", async () => {
+    mockBackend("user");
+    mountAt("/");
+    expect(await screen.findByRole("heading", { name: "Chat with a business" })).toBeInTheDocument();
+    const nav = screen.getByRole("complementary", { name: "Main navigation" });
+    expect(nav).toHaveTextContent("Chat & voice");
+    expect(nav).toHaveTextContent("My conversations");
+    expect(nav).not.toHaveTextContent("MCP integration");
+    expect(nav).not.toHaveTextContent("Businesses");
+  });
+
+  it("blocks customers from the admin dashboard", async () => {
+    mockBackend("user");
+    mountAt("/admin");
+    expect(await screen.findByText("Access denied")).toBeInTheDocument();
   });
 });
