@@ -1,0 +1,78 @@
+# HolidayBooking: a standalone mock hotel-booking system, independent of the main application's stack.
+name: holidaybooking
+
+services:
+  # HolidayBooking's own SQL Server. Only started (profile "local-db") when no SQL Server is already running
+  # on this machine; start.sh / start.ps1 decide. Data persists in the holidaybooking-sqlserver volume.
+  sqlserver:
+    profiles: ["local-db"]
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    platform: linux/amd64
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: ${HB_DB_PASSWORD:?Set HB_DB_PASSWORD in .env}
+      MSSQL_PID: Developer
+    ports:
+      - "${HB_SQL_PORT:-1434}:1433"
+    volumes:
+      - holidaybooking-sqlserver:/var/opt/mssql
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -Q 'SELECT 1' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+
+  backend:
+    build: ./backend
+    ports:
+      - "127.0.0.1:${HB_BACKEND_PORT:-8100}:8000"  # developer access only; the UI and MCP use the internal network
+    environment:
+      HB_BACKEND_API_KEY: ${HB_BACKEND_API_KEY:?Set HB_BACKEND_API_KEY in .env}
+      HB_SUPERADMIN_EMAIL: ${HB_SUPERADMIN_EMAIL:-}
+      HB_SUPERADMIN_PASSWORD: ${HB_SUPERADMIN_PASSWORD:-}
+      HB_SUPERADMIN_NAME: ${HB_SUPERADMIN_NAME:-Super Admin}
+      HB_COOKIE_SECURE: ${HB_COOKIE_SECURE:-false}
+      HB_MAX_NIGHTS: ${HB_MAX_NIGHTS:-30}
+      HB_DB_HOST: ${HB_DB_HOST:-host.docker.internal}
+      HB_DB_PORT: ${HB_DB_PORT:-1433}
+      HB_DB_NAME: ${HB_DB_NAME:-holidaybooking}
+      HB_DB_USER: ${HB_DB_USER:-sa}
+      HB_DB_PASSWORD: ${HB_DB_PASSWORD:?Set HB_DB_PASSWORD in .env}
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+        required: false  # absent when an existing SQL Server is reused
+    extra_hosts:
+      - "host.docker.internal:host-gateway"  # reach the main stack's SQL Server on Linux hosts too
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://localhost:8000/api/health')"]
+      interval: 10s
+      timeout: 3s
+      retries: 20
+      start_period: 30s
+
+  mcp-server:
+    build: ./mcp-server
+    environment:
+      HB_API_URL: ${HB_API_URL:-http://backend:8000}
+      MCP_TRANSPORT: ${MCP_TRANSPORT:-streamable-http}
+      HB_BACKEND_API_KEY: ${HB_BACKEND_API_KEY:?Set HB_BACKEND_API_KEY in .env}
+      HB_MCP_API_KEYS: ${HB_MCP_API_KEYS:?Set HB_MCP_API_KEYS in .env}
+    ports:
+      - "${HB_MCP_PORT:-8101}:8001"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  frontend:
+    build: ./frontend
+    environment:
+      HB_BACKEND_API_KEY: ${HB_BACKEND_API_KEY:?Set HB_BACKEND_API_KEY in .env}
+    ports:
+      - "${HB_FRONTEND_PORT:-8180}:80"
+    depends_on:
+      - backend
+
+volumes:
+  holidaybooking-sqlserver:
