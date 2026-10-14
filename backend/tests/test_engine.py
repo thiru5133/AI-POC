@@ -76,7 +76,7 @@ async def test_tool_failure_is_reported_to_llm_not_raised():
 
 async def test_context_retained_across_turns(session_factory, llm):
     service = ConversationService(session_factory, ConversationEngine(llm))
-    conv_id, greeting = await service.start(TENANT, PROFILE)
+    conv_id, greeting = await service.start(TENANT)
     assert greeting.startswith("Welcome to Demo Hotel")
     await service.reply(TENANT, conv_id, "I need a room from October 10th to 12th")
     await service.reply(TENANT, conv_id, "Two adults")

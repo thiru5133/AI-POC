@@ -3,6 +3,10 @@ import uuid
 
 from fastapi import FastAPI, Request
 
+from app.api.admin_routes import public_router as businesses_router
+from app.api.admin_routes import router as admin_router
+from app.api.auth_routes import router as auth_router
+from app.api.mcp_routes import router as mcp_router
 from app.api.routes import router
 from app.core.config import get_settings
 from app.core.errors import register_error_handlers
@@ -11,9 +15,16 @@ from app.core.logging import configure_logging, request_id_var
 configure_logging(get_settings().log_level)
 log = logging.getLogger(__name__)
 
+if get_settings().jwt_secret == "dev-insecure-change-me":
+    log.warning("JWT_SECRET is the insecure default; set JWT_SECRET before any shared deployment")
+
 app = FastAPI(title="AI Universal Receptionist")
 register_error_handlers(app)
 app.include_router(router)
+app.include_router(auth_router)
+app.include_router(admin_router)
+app.include_router(businesses_router)
+app.include_router(mcp_router)
 
 
 @app.middleware("http")
