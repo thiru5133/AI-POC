@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>GymBooking</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="top">
+      <div>
+        <h1>GymBooking</h1>
+        <p>FitZone gyms in Colombo, Kandy and Dubai. Find a class, book your spot, or cancel a booking.</p>
+      </div>
+      <a href="admin.html" class="staff-link">Staff login</a>
+    </header>
+
+    <main>
+      <section class="card">
+        <h2>1. Find a class</h2>
+        <form id="search" class="row">
+          <label>Where <select id="where"><option value="">Anywhere</option></select></label>
+          <label>Class <select id="category"><option value="">Any class</option></select></label>
+          <label>From <input type="date" id="dateFrom" required /></label>
+          <label>To <input type="date" id="dateTo" required /></label>
+          <button type="submit" class="primary">Search</button>
+        </form>
+        <p class="muted">Class times are shown in UTC.</p>
+        <p id="searchError" class="error" role="alert" hidden></p>
+        <div id="results"></div>
+      </section>
+
+      <section class="card" id="bookingCard" hidden>
+        <h2>2. Book <span id="bookingTitle"></span></h2>
+        <form id="book" class="stack">
+          <label>Your name <input id="memberName" required maxlength="120" /></label>
+          <label>Email <input id="memberEmail" type="email" required /></label>
+          <p id="bookingSummary" class="muted"></p>
+          <p id="bookError" class="error" role="alert" hidden></p>
+          <div class="row">
+            <button type="submit" class="primary">Confirm booking</button>
+            <button type="button" id="cancelBook">Back</button>
+          </div>
+        </form>
+        <p id="bookOk" class="ok" role="status" hidden></p>
+      </section>
+
+      <section class="card">
+        <h2>My bookings</h2>
+        <form id="lookup" class="row">
+          <label>Email <input id="lookupEmail" type="email" required /></label>
+          <button type="submit">Find my bookings</button>
+        </form>
+        <p id="lookupError" class="error" role="alert" hidden></p>
+        <div id="bookings"></div>
+      </section>
+    </main>
+
+    <script src="common.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>

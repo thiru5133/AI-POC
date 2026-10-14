@@ -1,0 +1,78 @@
+# GymBooking: a standalone mock gym class-booking system, independent of the main application's stack.
+name: gymbooking
+
+services:
+  # GymBooking's own SQL Server. Only started (profile "local-db") when no SQL Server is already running
+  # on this machine; start.sh / start.ps1 decide. Data persists in the gymbooking-sqlserver volume.
+  sqlserver:
+    profiles: ["local-db"]
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    platform: linux/amd64
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: ${GB_DB_PASSWORD:?Set GB_DB_PASSWORD in .env}
+      MSSQL_PID: Developer
+    ports:
+      - "${GB_SQL_PORT:-1435}:1433"
+    volumes:
+      - gymbooking-sqlserver:/var/opt/mssql
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -Q 'SELECT 1' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+
+  backend:
+    build: ./backend
+    ports:
+      - "127.0.0.1:${GB_BACKEND_PORT:-8200}:8000"  # developer access only; the UI and MCP use the internal network
+    environment:
+      GB_BACKEND_API_KEY: ${GB_BACKEND_API_KEY:?Set GB_BACKEND_API_KEY in .env}
+      GB_SUPERADMIN_EMAIL: ${GB_SUPERADMIN_EMAIL:-}
+      GB_SUPERADMIN_PASSWORD: ${GB_SUPERADMIN_PASSWORD:-}
+      GB_SUPERADMIN_NAME: ${GB_SUPERADMIN_NAME:-Super Admin}
+      GB_COOKIE_SECURE: ${GB_COOKIE_SECURE:-false}
+      GB_MAX_DAYS_AHEAD: ${GB_MAX_DAYS_AHEAD:-60}
+      GB_DB_HOST: ${GB_DB_HOST:-host.docker.internal}
+      GB_DB_PORT: ${GB_DB_PORT:-1433}
+      GB_DB_NAME: ${GB_DB_NAME:-gymbooking}
+      GB_DB_USER: ${GB_DB_USER:-sa}
+      GB_DB_PASSWORD: ${GB_DB_PASSWORD:?Set GB_DB_PASSWORD in .env}
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+        required: false  # absent when an existing SQL Server is reused
+    extra_hosts:
+      - "host.docker.internal:host-gateway"  # reach the main stack's SQL Server on Linux hosts too
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://localhost:8000/api/health')"]
+      interval: 10s
+      timeout: 3s
+      retries: 20
+      start_period: 30s
+
+  mcp-server:
+    build: ./mcp-server
+    environment:
+      GB_API_URL: ${GB_API_URL:-http://backend:8000}
+      MCP_TRANSPORT: ${MCP_TRANSPORT:-streamable-http}
+      GB_BACKEND_API_KEY: ${GB_BACKEND_API_KEY:?Set GB_BACKEND_API_KEY in .env}
+      GB_MCP_API_KEYS: ${GB_MCP_API_KEYS:?Set GB_MCP_API_KEYS in .env}
+    ports:
+      - "${GB_MCP_PORT:-8201}:8001"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  frontend:
+    build: ./frontend
+    environment:
+      GB_BACKEND_API_KEY: ${GB_BACKEND_API_KEY:?Set GB_BACKEND_API_KEY in .env}
+    ports:
+      - "${GB_FRONTEND_PORT:-8280}:80"
+    depends_on:
+      - backend
+
+volumes:
+  gymbooking-sqlserver:

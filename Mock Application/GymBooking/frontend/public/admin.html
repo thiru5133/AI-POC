@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>GymBooking · Staff</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="top">
+      <div>
+        <h1>GymBooking <span class="muted">staff</span></h1>
+        <p>Manage gyms, classes, sessions, bookings and users.</p>
+      </div>
+      <div class="row" id="userBar" hidden>
+        <span id="whoami" class="muted"></span>
+        <button type="button" id="changePassword" class="small">Change password</button>
+        <button type="button" id="logout" class="small">Log out</button>
+      </div>
+      <a href="index.html" class="staff-link" id="guestLink">Guest site</a>
+    </header>
+
+    <main>
+      <section class="card login" id="loginCard" hidden>
+        <h2>Staff login</h2>
+        <form id="login" class="stack">
+          <label>Email <input id="loginEmail" type="email" autocomplete="username" required /></label>
+          <label>Password <input id="loginPassword" type="password" autocomplete="current-password" required /></label>
+          <p id="loginError" class="error" role="alert" hidden></p>
+          <button type="submit" class="primary">Log in</button>
+        </form>
+      </section>
+
+      <div id="app" hidden>
+        <nav class="tabs" id="tabs" aria-label="Sections"></nav>
+        <p id="appError" class="error" role="alert" hidden></p>
+        <section id="view"></section>
+      </div>
+    </main>
+
+    <dialog id="dialog">
+      <form id="dialogForm" class="stack" method="dialog">
+        <h2 id="dialogTitle"></h2>
+        <div id="dialogFields" class="stack"></div>
+        <p id="dialogHelp" class="muted"></p>
+        <p id="dialogError" class="error" role="alert" hidden></p>
+        <div class="row">
+          <button type="submit" class="primary" id="dialogSubmit">Save</button>
+          <button type="button" id="dialogCancel">Cancel</button>
+        </div>
+      </form>
+    </dialog>
+
+    <script src="common.js"></script>
+    <script src="admin.js"></script>
+  </body>
+</html>
