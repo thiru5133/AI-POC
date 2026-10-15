@@ -16,13 +16,13 @@ from app.db import class_sessions, class_types, users
 DEMO_DAYS = 14
 # class type code -> (start hour UTC, trainer, capacity); every class type runs once a day at that time
 DEMO_SLOTS = {
-    "yoga": (7, "Anika Perera", 12),
-    "pilates": (8, "Maya Fernando", 10),
-    "strength": (9, "Ravi Kumar", 10),
-    "zumba": (17, "Sofia Diaz", 20),
-    "hiit": (18, "Marcus Lee", 15),
-    "spin": (19, "Nadia Hassan", 14),
-    "boxing": (20, "Omar Siddiq", 12),
+    "yoga": (7, "Kavitha Raman", 12),
+    "pilates": (8, "Meenakshi Iyer", 10),
+    "strength": (9, "Karthik Subramanian", 10),
+    "zumba": (17, "Divya Lakshmi", 20),
+    "hiit": (18, "Arun Prasad", 15),
+    "spin": (19, "Farhana Begum", 14),
+    "boxing": (20, "Imran Khan", 12),
 }
 
 

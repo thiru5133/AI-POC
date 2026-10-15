@@ -41,13 +41,14 @@ Reset: drop the `gymbooking` database (or `docker compose --profile local-db dow
 
 ## Gyms
 
-Migration `0002` seeds three gyms with their class types (USD per class):
+Migration `0002` seeds four Chennai gyms with their class types (INR per class):
 
 | Gym (code) | Location | Classes | From |
 |------------|----------|---------|------|
-| FitZone Colombo (`fitzone-colombo`) | Colombo, Sri Lanka | yoga, hiit, spin, zumba, strength | $8 |
-| FitZone Kandy (`fitzone-kandy`) | Kandy, Sri Lanka | yoga, hiit, pilates | $6 |
-| FitZone Dubai Marina (`fitzone-dubai`) | Dubai, United Arab Emirates | yoga, hiit, spin, boxing | $20 |
+| FitZone Anna Nagar (`fitzone-anna-nagar`) | Anna Nagar, Chennai | yoga, hiit, spin, zumba, strength | ₹300 |
+| FitZone T Nagar (`fitzone-t-nagar`) | T Nagar, Chennai | yoga, zumba, hiit, strength | ₹300 |
+| FitZone Adyar (`fitzone-adyar`) | Adyar, Chennai | yoga, pilates, hiit | ₹250 |
+| FitZone Velachery (`fitzone-velachery`) | Velachery, Chennai | yoga, hiit, spin, boxing | ₹300 |
 
 The same class can cost differently per gym. Sessions are dated, so they are not in a migration: at every start
 `app/seed.py` adds one session per class type and day for the next 14 days (idempotent, with fixed times and trainers

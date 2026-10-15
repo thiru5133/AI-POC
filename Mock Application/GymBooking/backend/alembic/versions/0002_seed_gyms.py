@@ -16,36 +16,46 @@ revision = "0002"
 down_revision = "0001"
 
 # code, name, city, country, address, description, class types
-# class type: code, name, description, duration (min), price (USD)
+# class type: code, name, description, duration (min), price (INR)
 GYMS = [
     (
-        "fitzone-colombo", "FitZone Colombo", "Colombo", "Sri Lanka", "14 Galle Road, Colombo 03",
+        "fitzone-anna-nagar", "FitZone Anna Nagar", "Chennai", "India", "2nd Avenue, Anna Nagar, Chennai 600040",
         "Flagship club with a full strength floor, studios and a rooftop yoga deck.",
         [
-            ("yoga", "Yoga Flow", "Gentle vinyasa flow for all levels.", 60, 8),
-            ("hiit", "HIIT Blast", "High-intensity intervals, 45 minutes of work.", 45, 10),
-            ("spin", "Spin Cycle", "Indoor cycling with a rhythm-based playlist.", 45, 10),
-            ("zumba", "Zumba Party", "Dance fitness set to Latin beats.", 60, 8),
-            ("strength", "Strength Basics", "Coached barbell and dumbbell fundamentals.", 60, 12),
+            ("yoga", "Yoga Flow", "Gentle vinyasa flow for all levels.", 60, 300),
+            ("hiit", "HIIT Blast", "High-intensity intervals, 45 minutes of work.", 45, 400),
+            ("spin", "Spin Cycle", "Indoor cycling with a rhythm-based playlist.", 45, 450),
+            ("zumba", "Zumba Party", "Dance fitness set to Latin beats.", 60, 350),
+            ("strength", "Strength Basics", "Coached barbell and dumbbell fundamentals.", 60, 500),
         ],
     ),
     (
-        "fitzone-kandy", "FitZone Kandy", "Kandy", "Sri Lanka", "5 Peradeniya Road, Kandy",
-        "Neighbourhood club in the hills with friendly small-group classes.",
+        "fitzone-t-nagar", "FitZone T Nagar", "Chennai", "India", "Usman Road, T Nagar, Chennai 600017",
+        "Busy shopping-district club with early-morning and after-work classes.",
         [
-            ("yoga", "Yoga Flow", "Gentle vinyasa flow for all levels.", 60, 6),
-            ("hiit", "HIIT Blast", "High-intensity intervals, 45 minutes of work.", 45, 8),
-            ("pilates", "Mat Pilates", "Core-focused mat work for posture and mobility.", 50, 9),
+            ("yoga", "Yoga Flow", "Gentle vinyasa flow for all levels.", 60, 300),
+            ("zumba", "Zumba Party", "Dance fitness set to Latin beats.", 60, 350),
+            ("hiit", "HIIT Blast", "High-intensity intervals, 45 minutes of work.", 45, 400),
+            ("strength", "Strength Basics", "Coached barbell and dumbbell fundamentals.", 60, 500),
         ],
     ),
     (
-        "fitzone-dubai", "FitZone Dubai Marina", "Dubai", "United Arab Emirates", "Marina Walk, Dubai Marina",
-        "Premium marina-side club open late, with a boxing ring and spin studio.",
+        "fitzone-adyar", "FitZone Adyar", "Chennai", "India", "Lattice Bridge Road, Adyar, Chennai 600020",
+        "Calm neighbourhood club near the river with friendly small-group classes.",
         [
-            ("yoga", "Yoga Flow", "Gentle vinyasa flow for all levels.", 60, 20),
-            ("hiit", "HIIT Blast", "High-intensity intervals, 45 minutes of work.", 45, 22),
-            ("spin", "Spin Cycle", "Indoor cycling with a rhythm-based playlist.", 45, 22),
-            ("boxing", "Boxing Fit", "Pad work and bag drills, no contact.", 60, 25),
+            ("yoga", "Yoga Flow", "Gentle vinyasa flow for all levels.", 60, 250),
+            ("pilates", "Mat Pilates", "Core-focused mat work for posture and mobility.", 50, 350),
+            ("hiit", "HIIT Blast", "High-intensity intervals, 45 minutes of work.", 45, 350),
+        ],
+    ),
+    (
+        "fitzone-velachery", "FitZone Velachery", "Chennai", "India", "100 Feet Road, Velachery, Chennai 600042",
+        "Large IT-corridor club open late, with a boxing ring and spin studio.",
+        [
+            ("yoga", "Yoga Flow", "Gentle vinyasa flow for all levels.", 60, 300),
+            ("hiit", "HIIT Blast", "High-intensity intervals, 45 minutes of work.", 45, 450),
+            ("spin", "Spin Cycle", "Indoor cycling with a rhythm-based playlist.", 45, 450),
+            ("boxing", "Boxing Fit", "Pad work and bag drills, no contact.", 60, 600),
         ],
     ),
 ]

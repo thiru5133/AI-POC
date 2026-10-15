@@ -5,7 +5,7 @@ import pytest
 from .conftest import future
 
 
-def first_session(client, gym="fitzone-colombo", category=None) -> int:
+def first_session(client, gym="fitzone-anna-nagar", category=None) -> int:
     """The id of the earliest upcoming session (of a gym / class) with room left, from the seeded timetable."""
     params = {"gym": gym, **({"category": category} if category else {})}
     sessions = client.get("/api/sessions", params=params).json()["sessions"]
@@ -19,15 +19,15 @@ def book(client, session_id, email="member@example.com", name="Asha Rao"):
 # ---------- the seeded gyms ----------
 def test_several_gyms_in_different_locations_are_seeded(client):
     gyms = client.get("/api/gyms").json()
-    assert {g["code"] for g in gyms} == {"fitzone-colombo", "fitzone-kandy", "fitzone-dubai"}
-    colombo = next(g for g in gyms if g["code"] == "fitzone-colombo")
-    assert colombo["class_type_count"] == 5 and colombo["from_price"] == 8
-    assert [g["code"] for g in client.get("/api/gyms", params={"city": "kandy"}).json()] == ["fitzone-kandy"]
-    assert [g["code"] for g in client.get("/api/gyms", params={"country": "United Arab Emirates"}).json()] == ["fitzone-dubai"]
+    assert {g["code"] for g in gyms} == {"fitzone-anna-nagar", "fitzone-t-nagar", "fitzone-adyar", "fitzone-velachery"}
+    colombo = next(g for g in gyms if g["code"] == "fitzone-anna-nagar")
+    assert colombo["class_type_count"] == 5 and colombo["from_price"] == 300
+    assert len(client.get("/api/gyms", params={"city": "chennai"}).json()) == 4
+    assert client.get("/api/gyms", params={"country": "Sri Lanka"}).json() == []
 
 
 def test_gym_details_include_class_types(client):
-    gym = client.get("/api/gyms/fitzone-kandy").json()
+    gym = client.get("/api/gyms/fitzone-adyar").json()
     assert {t["code"] for t in gym["class_types"]} == {"yoga", "hiit", "pilates"}
     assert client.get("/api/gyms/nowhere").status_code == 404
 
@@ -43,13 +43,13 @@ def test_sessions_default_to_the_coming_week_and_only_show_the_future(client):
 
 
 def test_sessions_can_be_filtered_by_gym_city_and_class(client):
-    colombo = client.get("/api/sessions", params={"gym": "fitzone-colombo"}).json()["sessions"]
-    assert {s["gym"]["code"] for s in colombo} == {"fitzone-colombo"}
+    colombo = client.get("/api/sessions", params={"gym": "fitzone-anna-nagar"}).json()["sessions"]
+    assert {s["gym"]["code"] for s in colombo} == {"fitzone-anna-nagar"}
     assert {s["class"]["code"] for s in colombo} == {"yoga", "hiit", "spin", "zumba", "strength"}
     yoga = client.get("/api/sessions", params={"category": "yoga"}).json()["sessions"]
-    assert {s["gym"]["code"] for s in yoga} == {"fitzone-colombo", "fitzone-kandy", "fitzone-dubai"}
-    dubai = client.get("/api/sessions", params={"city": "Dubai"}).json()["sessions"]
-    assert {s["gym"]["code"] for s in dubai} == {"fitzone-dubai"}
+    assert {s["gym"]["code"] for s in yoga} == {"fitzone-anna-nagar", "fitzone-t-nagar", "fitzone-adyar", "fitzone-velachery"}
+    chennai = client.get("/api/sessions", params={"city": "Chennai"}).json()["sessions"]
+    assert {s["gym"]["code"] for s in chennai} == {"fitzone-anna-nagar", "fitzone-t-nagar", "fitzone-adyar", "fitzone-velachery"}
     assert client.get("/api/sessions", params={"gym": "nowhere"}).json()["error"]["code"] == "unknown_gym"
 
 
@@ -65,13 +65,13 @@ def test_session_date_range_is_validated(client):
 # ---------- bookings ----------
 def test_booking_a_class_reduces_the_spots_and_can_be_looked_up(client):
     sid = first_session(client, category="yoga")
-    before = next(s for s in client.get("/api/sessions", params={"gym": "fitzone-colombo"}).json()["sessions"] if s["session_id"] == sid)
+    before = next(s for s in client.get("/api/sessions", params={"gym": "fitzone-anna-nagar"}).json()["sessions"] if s["session_id"] == sid)
     resp = book(client, sid, email="  Asha@Example.com ")
     assert resp.status_code == 201
     booking = resp.json()
     assert booking["reference"].startswith("GB-") and booking["status"] == "confirmed"
-    assert (booking["member_email"], booking["class_code"], booking["price"], booking["gym_name"]) == ("asha@example.com", "yoga", 8, "FitZone Colombo")
-    after = next(s for s in client.get("/api/sessions", params={"gym": "fitzone-colombo"}).json()["sessions"] if s["session_id"] == sid)
+    assert (booking["member_email"], booking["class_code"], booking["price"], booking["gym_name"]) == ("asha@example.com", "yoga", 300, "FitZone Anna Nagar")
+    after = next(s for s in client.get("/api/sessions", params={"gym": "fitzone-anna-nagar"}).json()["sessions"] if s["session_id"] == sid)
     assert after["spots_left"] == before["spots_left"] - 1
     assert client.get(f"/api/bookings/{booking['reference'].lower()}").json()["reference"] == booking["reference"]
     mine = client.get("/api/bookings", params={"email": "ASHA@example.com"}).json()
@@ -88,7 +88,7 @@ def test_the_same_member_cannot_book_a_class_twice(client):
 
 def test_a_full_class_cannot_be_booked_until_someone_cancels(client, root):
     sid = first_session(client)
-    capacity = next(s for s in client.get("/api/sessions", params={"gym": "fitzone-colombo"}).json()["sessions"] if s["session_id"] == sid)["capacity"]
+    capacity = next(s for s in client.get("/api/sessions", params={"gym": "fitzone-anna-nagar"}).json()["sessions"] if s["session_id"] == sid)["capacity"]
     client.patch(f"/api/admin/sessions/{sid}", json={"capacity": 2}, headers=root)
     refs = [book(client, sid, email=f"m{i}@example.com").json()["reference"] for i in range(2)]
     full = book(client, sid, email="late@example.com")

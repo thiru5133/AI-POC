@@ -23,10 +23,10 @@ TRANSPORT = os.getenv("MCP_TRANSPORT", "streamable-http")
 mcp = FastMCP(
     "GymBooking",
     instructions=(
-        "Tools for a group of gyms in different cities and countries, each with its own class types and prices. "
+        "Tools for a group of gyms in different areas of Chennai, India, each with its own class types and prices. "
         "Class times are UTC (ISO 8601). Use list_gyms to find gyms by location and list_classes to see the "
         "upcoming class sessions with spots left; every session has a session_id. Confirm the session, the "
-        "member's name and email before calling book_class. Prices are per class in USD."
+        "member's name and email before calling book_class. Prices are per class in INR (Indian rupees)."
     ),
     host=os.getenv("MCP_HOST", "0.0.0.0"),
     port=int(os.getenv("MCP_PORT", "8001")),
@@ -60,7 +60,7 @@ def _as_object(data: Any, key: str) -> Any:
 @mcp.tool()
 def list_gyms(city: str | None = None, country: str | None = None) -> Any:
     """List the gyms, optionally only those in a city or country. Each shows its location, number of class types
-    and the lowest class price (USD)."""
+    and the lowest class price (INR)."""
     params = {k: v for k, v in (("city", city), ("country", country)) if v}
     return _as_object(_call("GET", "/api/gyms", params=params), "gyms")
 
@@ -70,7 +70,7 @@ def get_gym(gym: str) -> Any:
     """Details of one gym: address, description and its class types with duration and price.
 
     Args:
-        gym: Gym code from list_gyms, e.g. fitzone-colombo.
+        gym: Gym code from list_gyms, e.g. fitzone-anna-nagar.
     """
     return _call("GET", f"/api/gyms/{gym.strip().lower()}")
 
@@ -89,7 +89,7 @@ def list_classes(
     Args:
         date_from: First day, YYYY-MM-DD (default today).
         date_to: Last day, YYYY-MM-DD (default 6 days after date_from).
-        gym: Optional gym code, e.g. fitzone-kandy.
+        gym: Optional gym code, e.g. fitzone-velachery.
         city: Optional city name, e.g. Dubai.
         category: Optional class type code, e.g. yoga, hiit, spin (types differ per gym).
     """

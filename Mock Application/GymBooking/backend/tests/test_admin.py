@@ -143,11 +143,11 @@ def test_gyms_can_be_edited_and_deactivated(client, root):
 def test_gyms_with_upcoming_bookings_cannot_be_deactivated_and_history_blocks_deleting(client, root):
     sid = first_session(client)
     ref = book(client, sid).json()["reference"]
-    blocked = client.patch("/api/admin/gyms/fitzone-colombo", json={"active": False}, headers=root)
+    blocked = client.patch("/api/admin/gyms/fitzone-anna-nagar", json={"active": False}, headers=root)
     assert blocked.status_code == 409 and blocked.json()["error"]["code"] == "has_upcoming_bookings"
     client.post(f"/api/bookings/{ref}/cancel")
-    assert client.patch("/api/admin/gyms/fitzone-colombo", json={"active": False}, headers=root).status_code == 200
-    gone = client.delete("/api/admin/gyms/fitzone-colombo", headers=root)
+    assert client.patch("/api/admin/gyms/fitzone-anna-nagar", json={"active": False}, headers=root).status_code == 200
+    gone = client.delete("/api/admin/gyms/fitzone-anna-nagar", headers=root)
     assert gone.status_code == 409 and gone.json()["error"]["code"] == "has_bookings"
 
 
@@ -155,7 +155,7 @@ def test_gyms_with_upcoming_bookings_cannot_be_deactivated_and_history_blocks_de
 def test_class_type_price_changes_apply_to_new_bookings_only(client, root):
     sid = first_session(client)
     old = book(client, sid).json()
-    sessions = client.get("/api/admin/gyms/fitzone-colombo/sessions", headers=root).json()
+    sessions = client.get("/api/admin/gyms/fitzone-anna-nagar/sessions", headers=root).json()
     type_id = next(s for s in sessions if s["id"] == sid)["class_type_id"]
     assert client.patch(f"/api/admin/class-types/{type_id}", json={"price": 99}, headers=root).json()["price"] == 99
     assert client.get(f"/api/bookings/{old['reference']}").json()["price"] == old["price"]
@@ -199,7 +199,7 @@ def test_sessions_with_bookings_are_protected(client, root):
     assert client.patch(url, json={"capacity": 30}, headers=root).json()["capacity"] == 30
     client.post(f"/api/bookings/{ref}/cancel")
     assert client.patch(url, json={"active": False}, headers=root).json()["active"] is False
-    assert sid not in [s["session_id"] for s in client.get("/api/sessions", params={"gym": "fitzone-colombo"}).json()["sessions"]]
+    assert sid not in [s["session_id"] for s in client.get("/api/sessions", params={"gym": "fitzone-anna-nagar"}).json()["sessions"]]
     assert client.delete(url, headers=root).status_code == 409  # cancelled bookings are still history
 
 

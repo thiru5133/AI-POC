@@ -1,6 +1,6 @@
 // Helpers shared by the member page and the admin area.
 const $ = (id) => document.getElementById(id);
-const money = (n) => `$${Number(n).toLocaleString()}`;
+const money = (n) => `₹${Number(n).toLocaleString("en-IN")}`;
 const iso = (d) => d.toISOString().slice(0, 10);
 
 // Everything that comes from the server or a user is escaped before it is put into HTML.

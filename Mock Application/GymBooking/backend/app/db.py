@@ -28,7 +28,7 @@ metadata = MetaData()
 gyms = Table(
     "gyms",
     metadata,
-    Column("code", String(40), primary_key=True),  # URL-safe slug, e.g. "fitzone-colombo"
+    Column("code", String(40), primary_key=True),  # URL-safe slug, e.g. "fitzone-anna-nagar"
     Column("name", String(120), nullable=False),
     Column("city", String(80), nullable=False),
     Column("country", String(80), nullable=False),
