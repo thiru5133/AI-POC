@@ -1,0 +1,95 @@
+"""Tools the platform itself provides, as opposed to a business's own MCP tools. A profile turns them on through
+`enabledTools`; the handler (not the LLM) performs the action."""
+
+import asyncio
+import logging
+import re
+from typing import Any
+
+from app.conversation.context import ConversationContext
+from app.core.errors import AppError
+from app.notifications.messaging import MessageSender
+from app.tools.base import Tool
+
+log = logging.getLogger(__name__)
+
+MAX_CONFIRMATIONS_PER_CONVERSATION = 3
+MAX_MESSAGE_CHARS = 480
+_PHONE = re.compile(r"^\+[1-9]\d{7,14}$")
+_EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def _normalize(channel: str, to: str) -> str | None:
+    """The destination in canonical form, or None when it does not suit the channel."""
+    if channel == "email":
+        return to.strip().lower() if _EMAIL.match(to.strip()) else None
+    phone = re.sub(r"[\s\-().]", "", to)
+    return phone if _PHONE.match(phone) else None
+
+
+def request_human_tool() -> Tool:
+    async def handler(ctx: ConversationContext, args: dict[str, Any]) -> dict[str, Any]:
+        ctx.handoff_requested = True
+        ctx.handoff_reason = str(args.get("reason") or "")[:200] or None
+        return {
+            "status": "recorded",
+            "note": "A staff member will follow up with the caller. A live transfer is not available yet, so tell "
+            "the caller someone will contact them; do not say they are being connected right now.",
+        }
+
+    return Tool(
+        "request_human",
+        "Record that the caller wants to speak to a person. Use when they ask for a human, or you cannot help.",
+        {
+            "type": "object",
+            "properties": {"reason": {"type": "string", "description": "Why the caller needs a person, in a few words."}},
+        },
+        handler,
+    )
+
+
+def send_confirmation_tool(senders: dict[str, MessageSender]) -> Tool:
+    async def handler(ctx: ConversationContext, args: dict[str, Any]) -> dict[str, Any]:
+        channel = str(args.get("channel", ""))
+        message = str(args.get("message", "")).strip()
+        if channel not in senders:
+            return {"sent": False, "reason": f"Unknown channel; use one of: {', '.join(sorted(senders))}."}
+        if not message or len(message) > MAX_MESSAGE_CHARS:
+            return {"sent": False, "reason": f"The message must be 1 to {MAX_MESSAGE_CHARS} characters."}
+        to = _normalize(channel, str(args.get("to", "")))
+        if to is None:
+            return {"sent": False, "reason": "That is not a valid phone number (with country code) or email address."}
+        # The LLM chooses the destination, so a caller could try to make it message other people: keep to the first
+        # number or address given, and cap how many messages one conversation can send.
+        if ctx.notifications_sent >= MAX_CONFIRMATIONS_PER_CONVERSATION:
+            return {"sent": False, "reason": "The limit of confirmation messages for this conversation was reached."}
+        if ctx.notify_target not in (None, to):
+            return {"sent": False, "reason": "Messages can only go to the contact the caller gave first."}
+        try:
+            await asyncio.to_thread(senders[channel].send, to, message)
+        except AppError as exc:
+            log.warning("confirmation not sent", extra={"tenant_id": ctx.tenant_id, "channel": channel, "error": exc.message})
+            return {"sent": False, "reason": "The message could not be delivered."}
+        ctx.notifications_sent += 1
+        ctx.notify_target = to
+        return {"sent": True, "channel": channel}
+
+    return Tool(
+        "send_confirmation",
+        "Send the caller a short text confirmation of a booking or change once it is done and they gave their phone "
+        "number (with country code) or email address. Never send before the booking succeeded.",
+        {
+            "type": "object",
+            "properties": {
+                "channel": {"type": "string", "enum": sorted(senders)},
+                "to": {"type": "string", "description": "Phone number with country code, or email address."},
+                "message": {"type": "string", "description": "The confirmation text, under 480 characters."},
+            },
+            "required": ["channel", "to", "message"],
+        },
+        handler,
+    )
+
+
+def builtin_tools(senders: dict[str, MessageSender]) -> list[Tool]:
+    return [request_human_tool(), send_confirmation_tool(senders)]

@@ -4,6 +4,7 @@ import pytest
 
 from app.ai.base import LLMEvent, LLMProvider
 from app.api import deps
+from app.domain.catalog import PLATFORM_TOOLS
 from app.main import app
 from app.mcp.client import McpCallResult, McpClient, McpConnection, McpToolInfo
 from app.mcp.security import InvalidMcpUrlError, validate_mcp_url
@@ -46,6 +47,7 @@ class ToolCallingLLM(LLMProvider):
         self.systems: list[str] = []
 
     async def stream(self, system, messages, tools):
+        tools = [t for t in tools if t.name not in PLATFORM_TOOLS]  # these tests are about the business's own MCP tools
         self.offered.append([t.name for t in tools])
         self.systems.append(system)
         if tools and isinstance(messages[-1]["content"], str):
@@ -307,12 +309,12 @@ def test_each_conversation_only_gets_and_calls_its_own_organizations_tools(clien
 
     tools_a, system_a = talk(a)
     tools_b, _ = talk(b)
-    tools_c, system_c = talk(c)
+    tools_c, _ = talk(c)
 
     assert tools_a == ["hotel__check_availability"]
     assert tools_b == ["shop__list_orders"]
     assert tools_c == []
-    assert "tools connected" in system_a and "tools connected" not in system_c
+    assert "tools connected" in system_a  # org C still gets the platform tools (request_human...), but no MCP ones
 
     calls = [r for r in fake.requests if r[0] == "call"]
     assert [(r[1].url, r[1].headers, r[1].transport, r[2]) for r in calls] == [

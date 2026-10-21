@@ -21,7 +21,9 @@ from app.core.errors import ForbiddenError, UnauthorizedError
 from app.database.session import get_session_factory
 from app.models import User
 from app.notifications.email import EmailSender, create_email_sender
+from app.notifications.messaging import create_message_senders
 from app.tenants.service import BusinessService
+from app.tools.builtin import builtin_tools
 from app.tools.registry import ToolRegistry
 from app.voice.base import BrowserVoiceProvider, STTProvider, TTSProvider, VoiceProvider
 from app.voice.deepgram import DeepgramSTT, DeepgramTTS
@@ -42,8 +44,9 @@ def get_llm() -> LLMProvider:
     return _llm(get_settings().llm_provider)
 
 
-def get_tool_registry() -> ToolRegistry:
-    return ToolRegistry()  # domain tools are registered here from Phase 2/3
+def get_tool_registry(settings: Settings = Depends(get_settings)) -> ToolRegistry:
+    # Platform tools; a profile opts in through `enabledTools`. A business's own tools come from its MCP servers.
+    return ToolRegistry(builtin_tools(create_message_senders(settings, create_email_sender(settings))))
 
 
 def get_stt(settings: Settings = Depends(get_settings)) -> STTProvider:

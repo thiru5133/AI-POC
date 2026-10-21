@@ -24,3 +24,7 @@ class ConversationContext(BaseModel):
     caller: Caller = Field(default_factory=Caller)
     workflow_state: str | None = None
     last_action: str | None = None
+    handoff_requested: bool = False  # the caller asked for a person (set by the request_human tool)
+    handoff_reason: str | None = None
+    notifications_sent: int = 0  # confirmations sent in this conversation (capped, see tools/builtin.py)
+    notify_target: str | None = None  # the one phone number / email address those went to

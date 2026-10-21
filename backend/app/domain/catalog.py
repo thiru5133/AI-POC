@@ -38,6 +38,9 @@ DOMAINS: tuple[DomainDef, ...] = (
 
 BY_KEY = {d.key: d for d in DOMAINS}
 
+# Built-in tools (app/tools/builtin.py) every new business's assistant gets, next to its own MCP tools.
+PLATFORM_TOOLS = ("request_human", "send_confirmation")
+
 
 def profile_config(domain: DomainDef, business_name: str) -> dict:
     """A new partner's starting profile: identity and booking workflow from its domain, no built-in facts."""
@@ -48,6 +51,7 @@ def profile_config(domain: DomainDef, business_name: str) -> dict:
             "greeting": f"Welcome to {business_name}. How can I help you?",
         },
         "bookingWorkflow": {"resourceType": domain.booking_resource, "requiredFields": list(domain.booking_fields)},
+        "enabledTools": list(PLATFORM_TOOLS),
     }
 
 

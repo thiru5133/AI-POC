@@ -32,6 +32,10 @@ class Settings(BaseSettings):
     app_base_url: str = "http://localhost:5173"  # used for the login link in emails
     email_from: str = ""  # sender address; must be verified in SendGrid
     sendgrid_api_key: str = ""  # empty = log emails instead of sending (dev only)
+    twilio_account_sid: str = ""  # empty = log SMS / WhatsApp messages instead of sending them (dev only)
+    twilio_auth_token: str = ""
+    twilio_sms_from: str = ""  # E.164 number or messaging service sender, e.g. +14155550100
+    twilio_whatsapp_from: str = ""  # E.164 number enabled for WhatsApp (sandbox: +14155238886)
     mcp_secret_key: str = ""  # Fernet key for stored MCP access tokens; derived from JWT_SECRET when empty
     mcp_allow_private_hosts: bool = False  # allow MCP URLs on loopback/private networks (local development)
     mcp_max_servers_per_tenant: int = 5

@@ -1,4 +1,6 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+from app.domain.hours import validate_hours
 
 
 class Identity(BaseModel):
@@ -8,8 +10,15 @@ class Identity(BaseModel):
     voice_style: str = Field("conversational", alias="voiceStyle")
     timezone: str = "UTC"
     language: str = "en"
+    hours: dict[str, str] = {}  # empty = always open; see app/domain/hours.py
+    after_hours_message: str = Field("", alias="afterHoursMessage")
 
     model_config = {"populate_by_name": True}
+
+    @field_validator("hours")
+    @classmethod
+    def _check_hours(cls, value: dict[str, str]) -> dict[str, str]:
+        return validate_hours(value)
 
 
 class FAQ(BaseModel):
