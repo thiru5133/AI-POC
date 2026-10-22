@@ -86,6 +86,8 @@ export function ConversationsPage() {
               <span className="preview">{c.preview || "(no message)"}</span>
               <span className="meta">
                 {c.messageCount} message{c.messageCount === 1 ? "" : "s"}
+                {c.urgency && c.urgency !== "normal" && <span className={`urgency ${c.urgency}`}>{c.urgency}</span>}
+                {c.handoffRequested && <span className="urgency handoff">wants a person</span>}
               </span>
             </Link>
           ))}

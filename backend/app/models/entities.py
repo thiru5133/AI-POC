@@ -170,3 +170,16 @@ class McpServer(Base):
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+
+class UsageEvent(Base):
+    """One metered thing a business used (see app/usage.py for the kinds). Always read through UsageRepository."""
+
+    __tablename__ = "usage_events"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"), index=True)
+    conversation_id: Mapped[str | None] = mapped_column(ForeignKey("conversations.id"), nullable=True)
+    kind: Mapped[str] = mapped_column(String(30))
+    quantity: Mapped[int] = mapped_column(Integer, default=1)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now, index=True)

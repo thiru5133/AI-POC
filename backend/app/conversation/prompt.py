@@ -79,6 +79,15 @@ def build_system_prompt(profile: DomainProfile, ctx: ConversationContext, tools_
             "caller. Dates passed to tools must be exact, in the format the tool asks for.",
             "- Read results back naturally; never read out technical ids, JSON or field names.",
         ]
+    if "flag_urgency" in profile.enabled_tools:
+        parts.append(
+            "- Watch the caller's tone: call flag_urgency as soon as they sound frustrated or angry, describe "
+            "something urgent, or describe an emergency, then carry on helping."
+        )
+    if ident.emergency_guidance:
+        parts.append(f"- EMERGENCY (danger to life, serious injury or illness, fire, crime): {ident.emergency_guidance}")
+    if ctx.urgency != "normal":
+        parts += ["", f"CALLER STATE: {ctx.urgency}" + (f" ({ctx.urgency_reason})" if ctx.urgency_reason else "")]
     if ctx.entities:
         parts += ["", f"INFORMATION ALREADY COLLECTED: {ctx.entities}"]
     return "\n".join(parts)

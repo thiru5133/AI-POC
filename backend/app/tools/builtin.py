@@ -6,6 +6,7 @@ import logging
 import re
 from typing import Any
 
+from app import usage
 from app.conversation.context import ConversationContext
 from app.core.errors import AppError
 from app.notifications.messaging import MessageSender
@@ -48,6 +49,45 @@ def request_human_tool() -> Tool:
     )
 
 
+URGENCY_LEVELS = ("frustrated", "urgent", "emergency")
+_URGENCY_RANK = {"normal": 0, "frustrated": 1, "urgent": 2, "emergency": 3}
+_URGENCY_NOTES = {
+    "frustrated": "Apologise briefly, keep helping, and offer to have a person follow up if it does not get better.",
+    "urgent": "Treat this as a priority: help with the most important thing first and say a staff member will "
+    "follow up as soon as possible.",
+    "emergency": "Follow the EMERGENCY instruction in your rules right now, before anything else, and keep it short.",
+}
+
+
+def flag_urgency_tool() -> Tool:
+    async def handler(ctx: ConversationContext, args: dict[str, Any]) -> dict[str, Any]:
+        level = str(args.get("level", ""))
+        if level not in URGENCY_LEVELS:
+            return {"recorded": False, "reason": f"level must be one of: {', '.join(URGENCY_LEVELS)}."}
+        if _URGENCY_RANK[level] > _URGENCY_RANK[ctx.urgency]:  # only ever raised within a conversation
+            ctx.urgency = level
+            ctx.urgency_reason = str(args.get("reason") or "")[:200] or None
+        if level in ("urgent", "emergency"):
+            ctx.handoff_requested = True
+            ctx.handoff_reason = ctx.handoff_reason or ctx.urgency_reason or level
+        return {"recorded": True, "urgency": ctx.urgency, "note": _URGENCY_NOTES[level]}
+
+    return Tool(
+        "flag_urgency",
+        "Flag the caller's state so staff can see it. Call it as soon as the caller sounds frustrated or angry, "
+        "describes something urgent, or describes an emergency (danger to life, injury, serious illness, fire, crime).",
+        {
+            "type": "object",
+            "properties": {
+                "level": {"type": "string", "enum": list(URGENCY_LEVELS)},
+                "reason": {"type": "string", "description": "What the caller said or showed, in a few words."},
+            },
+            "required": ["level"],
+        },
+        handler,
+    )
+
+
 def send_confirmation_tool(senders: dict[str, MessageSender]) -> Tool:
     async def handler(ctx: ConversationContext, args: dict[str, Any]) -> dict[str, Any]:
         channel = str(args.get("channel", ""))
@@ -72,6 +112,7 @@ def send_confirmation_tool(senders: dict[str, MessageSender]) -> Tool:
             return {"sent": False, "reason": "The message could not be delivered."}
         ctx.notifications_sent += 1
         ctx.notify_target = to
+        ctx.record_usage(usage.CONFIRMATION)
         return {"sent": True, "channel": channel}
 
     return Tool(
@@ -92,4 +133,4 @@ def send_confirmation_tool(senders: dict[str, MessageSender]) -> Tool:
 
 
 def builtin_tools(senders: dict[str, MessageSender]) -> list[Tool]:
-    return [request_human_tool(), send_confirmation_tool(senders)]
+    return [request_human_tool(), send_confirmation_tool(senders), flag_urgency_tool()]

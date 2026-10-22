@@ -15,6 +15,7 @@ class DomainDef:
     persona: str  # "hotel receptionist"
     booking_resource: str
     booking_fields: tuple[str, ...]
+    emergency_guidance: str = ""  # shown to the assistant as its emergency rule, when the domain has one
 
 
 DOMAINS: tuple[DomainDef, ...] = (
@@ -23,7 +24,9 @@ DOMAINS: tuple[DomainDef, ...] = (
     DomainDef("school", "Schools", "Schools, colleges and coaching centres", "school front-office assistant",
               "admission_visit", ("student_name", "grade", "parent_name", "phone")),
     DomainDef("hospital", "Hospitals", "Hospitals and clinics", "hospital reception and appointments desk",
-              "appointment", ("department", "date", "patient_name", "phone")),
+              "appointment", ("department", "date", "patient_name", "phone"),
+              "Tell the caller to call the local emergency number (112 in India) or go to the nearest emergency "
+              "department immediately, and do not continue with booking until they are safe."),
     DomainDef("restaurant", "Restaurants", "Restaurants, cafes and catering", "restaurant host",
               "table", ("date", "time", "party_size", "guest_name")),
     DomainDef("real_estate", "Real estate", "Property sales, rentals and site visits", "property consultant",
@@ -39,7 +42,7 @@ DOMAINS: tuple[DomainDef, ...] = (
 BY_KEY = {d.key: d for d in DOMAINS}
 
 # Built-in tools (app/tools/builtin.py) every new business's assistant gets, next to its own MCP tools.
-PLATFORM_TOOLS = ("request_human", "send_confirmation")
+PLATFORM_TOOLS = ("request_human", "send_confirmation", "flag_urgency")
 
 
 def profile_config(domain: DomainDef, business_name: str) -> dict:
@@ -49,6 +52,7 @@ def profile_config(domain: DomainDef, business_name: str) -> dict:
             "organizationName": business_name,
             "persona": domain.persona,
             "greeting": f"Welcome to {business_name}. How can I help you?",
+            **({"emergencyGuidance": domain.emergency_guidance} if domain.emergency_guidance else {}),
         },
         "bookingWorkflow": {"resourceType": domain.booking_resource, "requiredFields": list(domain.booking_fields)},
         "enabledTools": list(PLATFORM_TOOLS),

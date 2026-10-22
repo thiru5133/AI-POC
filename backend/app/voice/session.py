@@ -8,9 +8,11 @@ server -> client: JSON events (transcript.partial/final, assistant.text, assista
 import asyncio
 import contextlib
 import logging
+import time
 
 from fastapi import WebSocket, WebSocketDisconnect
 
+from app import usage
 from app.conversation.chunker import sentences
 from app.conversation.service import ConversationService
 from app.core.errors import AppError
@@ -43,6 +45,7 @@ class VoiceSession:
 
     async def run(self) -> None:
         await self.ws.accept()
+        started = time.monotonic()
         try:
             profile = await self.service.get_profile(self.tenant_id, self.conversation_id, self.user_id)
             stt = await self.stt.open(profile.identity.language)
@@ -69,6 +72,10 @@ class VoiceSession:
             with contextlib.suppress(Exception):
                 await self._cancel_turn()
             await stt.close()
+            with contextlib.suppress(Exception):
+                await self.service.record_usage(
+                    self.tenant_id, self.conversation_id, usage.VOICE_SECONDS, round(time.monotonic() - started)
+                )
             with contextlib.suppress(Exception):
                 await self.ws.close()
 

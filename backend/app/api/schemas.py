@@ -34,6 +34,8 @@ class ConversationSummary(CamelModel):
     id: str
     started_at: datetime
     status: str
+    urgency: str = "normal"  # normal | frustrated | urgent | emergency
+    handoff_requested: bool = False
     message_count: int
     last_message_at: datetime | None
     preview: str  # the caller's first message
@@ -262,3 +264,15 @@ class McpTestOut(CamelModel):
     ok: bool
     error: str | None = None
     tools: list[McpToolOut]
+
+
+# ---- usage metering ----
+class UsageOut(CamelModel):
+    period_days: int
+    since: datetime
+    conversations: int
+    messages: int
+    voice_minutes: float
+    tool_calls: int
+    bookings: int  # estimated from tool names, see app/usage.py
+    confirmations: int

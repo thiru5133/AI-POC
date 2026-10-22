@@ -1,6 +1,6 @@
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, PrivateAttr
 
 
 class Caller(BaseModel):
@@ -24,7 +24,20 @@ class ConversationContext(BaseModel):
     caller: Caller = Field(default_factory=Caller)
     workflow_state: str | None = None
     last_action: str | None = None
+    urgency: str = "normal"  # normal | frustrated | urgent | emergency; only ever raised (see tools/builtin.py)
+    urgency_reason: str | None = None
     handoff_requested: bool = False  # the caller asked for a person (set by the request_human tool)
     handoff_reason: str | None = None
     notifications_sent: int = 0  # confirmations sent in this conversation (capped, see tools/builtin.py)
     notify_target: str | None = None  # the one phone number / email address those went to
+
+    # Usage events of the current turn (not persisted with the context): the engine and tools add to it, the
+    # conversation service writes them to the usage log when it saves the turn.
+    _usage: list[tuple[str, int]] = PrivateAttr(default_factory=list)
+
+    def record_usage(self, kind: str, quantity: int = 1) -> None:
+        self._usage.append((kind, quantity))
+
+    @property
+    def usage_log(self) -> list[tuple[str, int]]:
+        return list(self._usage)

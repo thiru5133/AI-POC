@@ -8,6 +8,7 @@ from app.api.admin_routes import router as admin_router
 from app.api.auth_routes import router as auth_router
 from app.api.mcp_routes import router as mcp_router
 from app.api.routes import router
+from app.api.usage_routes import router as usage_router
 from app.core.config import get_settings
 from app.core.errors import register_error_handlers
 from app.core.logging import configure_logging, request_id_var
@@ -25,6 +26,7 @@ app.include_router(auth_router)
 app.include_router(admin_router)
 app.include_router(businesses_router)
 app.include_router(mcp_router)
+app.include_router(usage_router)
 
 
 @app.middleware("http")

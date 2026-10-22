@@ -12,6 +12,8 @@ class Identity(BaseModel):
     language: str = "en"
     hours: dict[str, str] = {}  # empty = always open; see app/domain/hours.py
     after_hours_message: str = Field("", alias="afterHoursMessage")
+    # What the assistant must tell a caller in an emergency, e.g. to call the emergency number first
+    emergency_guidance: str = Field("", alias="emergencyGuidance")
 
     model_config = {"populate_by_name": True}
 

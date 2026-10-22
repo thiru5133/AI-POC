@@ -140,10 +140,25 @@ export interface ConversationSummary {
   id: string;
   startedAt: string;
   status: string;
+  /** normal | frustrated | urgent | emergency, as flagged by the assistant. */
+  urgency?: "normal" | "frustrated" | "urgent" | "emergency";
+  /** The caller asked for a person (or was flagged urgent). */
+  handoffRequested?: boolean;
   messageCount: number;
   lastMessageAt: string | null;
   /** The caller's first message. */
   preview: string;
+}
+
+export interface Usage {
+  periodDays: number;
+  conversations: number;
+  messages: number;
+  voiceMinutes: number;
+  toolCalls: number;
+  /** Estimated from tool names, so a differently named booking tool is under-counted. */
+  bookings: number;
+  confirmations: number;
 }
 
 export interface ConversationList {

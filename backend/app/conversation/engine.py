@@ -2,6 +2,7 @@ import json
 from collections.abc import AsyncIterator
 from typing import Any
 
+from app import usage
 from app.ai.base import LLMProvider
 from app.conversation.context import ConversationContext
 from app.conversation.prompt import build_system_prompt
@@ -69,6 +70,10 @@ class ConversationEngine:
                 else:
                     output, is_error = await self.tools.execute(call.tool_name, ctx, call.tool_input)
                 ctx.last_action = call.tool_name
+                if not is_error:
+                    ctx.record_usage(usage.TOOL_CALL)
+                    if usage.is_booking_tool(call.tool_name):
+                        ctx.record_usage(usage.BOOKING)
                 results.append(
                     {
                         "type": "tool_result",

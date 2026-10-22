@@ -75,6 +75,8 @@ class ConversationRepository(TenantScopedRepository[Conversation]):
                     "id": c.id,
                     "started_at": c.started_at,
                     "status": c.status,
+                    "urgency": (c.context or {}).get("urgency", "normal"),
+                    "handoff_requested": bool((c.context or {}).get("handoff_requested")),
                     "message_count": counts.get(c.id, (0, None))[0],
                     "last_message_at": counts.get(c.id, (0, None))[1],
                     "preview": previews.get(c.id, "")[:160],

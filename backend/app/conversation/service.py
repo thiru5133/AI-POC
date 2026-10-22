@@ -12,7 +12,9 @@ from app.core.errors import NotFoundError
 from app.domain.loader import parse_profile
 from app.domain.profile import DomainProfile
 from app.models import Conversation
+from app import usage
 from app.repositories.conversations import ConversationRepository, DomainProfileRepository
+from app.repositories.usage import UsageRepository
 
 log = logging.getLogger(__name__)
 
@@ -44,6 +46,7 @@ class ConversationService:
             conv = repo.add(Conversation(domain_profile_id=profile_row.id, context={}))
             greeting = profile.identity.greeting
             repo.add_message(conv.id, "assistant", greeting)
+            UsageRepository(session, tenant_id).record(usage.CONVERSATION, 1, conv.id)
             session.commit()
             return conv.id, greeting
 
@@ -72,6 +75,10 @@ class ConversationService:
             if reply.strip():
                 repo.add_message(ctx.session_id, "assistant", reply.strip())
             conv.context = ctx.model_dump(exclude={"session_id", "tenant_id", "domain_profile_id"})
+            meter = UsageRepository(session, tenant_id)
+            meter.record(usage.MESSAGE, 1, ctx.session_id)
+            for kind, quantity in ctx.usage_log:
+                meter.record(kind, quantity, ctx.session_id)
             session.commit()
 
     def _list(self, tenant_id: str, user_id: str | None, limit: int, offset: int, include_empty: bool) -> dict[str, Any]:
@@ -127,6 +134,14 @@ class ConversationService:
             await asyncio.shield(
                 asyncio.to_thread(self._save_turn, tenant_id, user_id, state.ctx, user_text, "".join(collected))
             )
+
+    async def record_usage(self, tenant_id: str, conversation_id: str, kind: str, quantity: int) -> None:
+        def write() -> None:
+            with self._sf() as session:
+                UsageRepository(session, tenant_id).record(kind, quantity, conversation_id)
+                session.commit()
+
+        await asyncio.to_thread(write)
 
     async def reply(self, tenant_id: str, conversation_id: str, user_text: str, user_id: str | None = None) -> str:
         return "".join(
