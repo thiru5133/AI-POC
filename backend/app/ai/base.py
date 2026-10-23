@@ -18,6 +18,12 @@ class LLMEvent:
     tool_id: str = ""
     tool_name: str = ""
     tool_input: dict[str, Any] = field(default_factory=dict)
+    # Provider-specific data that must be echoed back with the call (e.g. Gemini's thought signature).
+    provider_data: dict[str, Any] | None = None
+
+
+class LLMBusyError(Exception):
+    """The model provider is rate limiting us (too many requests or tokens right now). Not a fault in the assistant."""
 
 
 class LLMProvider(ABC):

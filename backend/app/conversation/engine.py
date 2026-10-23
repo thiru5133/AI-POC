@@ -10,6 +10,8 @@ from app.domain.profile import DomainProfile
 from app.mcp.tools import McpToolSource
 from app.tools.registry import ToolRegistry
 
+MAX_TOOL_RESULT_CHARS = 3500  # keeps the follow-up model call small enough for per-minute token limits
+
 
 class ConversationEngine:
     """Domain-agnostic turn runner: prompt from profile -> LLM -> (tool loop) -> streamed text.
@@ -59,7 +61,14 @@ class ConversationEngine:
             if "".join(text_parts).strip():
                 blocks.append({"type": "text", "text": "".join(text_parts)})
             blocks += [
-                {"type": "tool_use", "id": c.tool_id, "name": c.tool_name, "input": c.tool_input} for c in calls
+                {
+                    "type": "tool_use",
+                    "id": c.tool_id,
+                    "name": c.tool_name,
+                    "input": c.tool_input,
+                    **({"provider_data": c.provider_data} if c.provider_data else {}),
+                }
+                for c in calls
             ]
             messages.append({"role": "assistant", "content": blocks})
 
@@ -78,7 +87,7 @@ class ConversationEngine:
                     {
                         "type": "tool_result",
                         "tool_use_id": call.tool_id,
-                        "content": json.dumps(output),
+                        "content": json.dumps(output)[:MAX_TOOL_RESULT_CHARS],
                         "is_error": is_error,
                     }
                 )
