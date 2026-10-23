@@ -9,6 +9,7 @@ import { ChatPage } from "./pages/ChatPage";
 import { ConversationsPage } from "./pages/ConversationsPage";
 import { LoginPage } from "./pages/LoginPage";
 import { McpPage } from "./pages/McpPage";
+import { PhonePage } from "./pages/PhonePage";
 import { RegisterPage } from "./pages/RegisterPage";
 import { VerifyOtpPage } from "./pages/VerifyOtpPage";
 import { BusinessesPage } from "./pages/superadmin/BusinessesPage";
@@ -43,6 +44,7 @@ export function App() {
         <Route element={<ProtectedRoute roles={["admin"]} />}>
           <Route path="/admin" element={<AdminHomePage />} />
           <Route path="/mcp" element={<McpPage />} />
+          <Route path="/phone" element={<PhonePage />} />
         </Route>
         <Route element={<ProtectedRoute roles={["admin", "user"]} />}>
           <Route path="/chat" element={<ChatPage />} />

@@ -150,6 +150,22 @@ export interface ConversationSummary {
   preview: string;
 }
 
+export interface PhoneSettings {
+  number: string | null;
+  transferNumber: string | null;
+  /** Which service connects the number to this server. */
+  provider: "vapi" | "twilio";
+  /** The URL to paste into that service (Vapi's server URL, or Twilio's "A call comes in" webhook); null until the server knows its public URL. */
+  webhookUrl: string | null;
+  /** The business's domain and the number of that domain's shared line (set by a superadmin); null when there is none. */
+  domainName: string | null;
+  domainNumber: string | null;
+  /** The no-login page that shows this business's number, for sharing; null while no number is set. */
+  publicUrl: string | null;
+  /** The server has a public URL and the provider's credentials, so calls can actually reach it. */
+  ready: boolean;
+}
+
 export interface Usage {
   periodDays: number;
   conversations: number;

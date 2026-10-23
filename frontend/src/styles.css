@@ -285,3 +285,5 @@ button.secondary:hover:not(:disabled) { background: var(--surface-2); }
 .urgency { display: inline-block; margin-left: 8px; padding: 1px 8px; border-radius: 999px; font-size: 0.72rem; font-weight: 600; text-transform: capitalize; }
 .urgency.frustrated, .urgency.handoff { background: rgba(247, 144, 9, 0.15); color: var(--warn); }
 .urgency.urgent, .urgency.emergency { background: rgba(217, 45, 32, 0.12); color: var(--danger); }
+
+.webhook-url { display: block; margin-top: 8px; padding: 10px 12px; background: var(--primary-soft); border-radius: var(--radius); word-break: break-all; }
