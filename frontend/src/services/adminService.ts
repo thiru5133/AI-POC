@@ -1,4 +1,4 @@
-import type { Business, Domain, RequestStatus, UserDetail, UserList, UserRole } from "../types";
+import type { Business, Domain, DomainNumber, RequestStatus, UserDetail, UserList, UserRole } from "../types";
 import { apiFetch } from "./apiClient";
 
 export interface UserQuery {
@@ -28,6 +28,15 @@ export const adminService = {
     apiFetch<Business>(`/api/superadmin/businesses/${encodeURIComponent(id)}`, {
       method: "PATCH",
       body: JSON.stringify({ isActive }),
+    }),
+
+  listDomainNumbers: () => apiFetch<DomainNumber[]>("/api/superadmin/domain-numbers"),
+
+  /** An empty number turns the domain's shared line off. */
+  setDomainNumber: (id: string, number: string, transferNumber: string) =>
+    apiFetch<DomainNumber>(`/api/superadmin/domain-numbers/${encodeURIComponent(id)}`, {
+      method: "PUT",
+      body: JSON.stringify({ number: number.trim() || null, transferNumber: transferNumber.trim() || null }),
     }),
 
   listUsers(query: UserQuery = {}) {

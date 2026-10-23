@@ -85,6 +85,26 @@ export interface BusinessPublic {
   domainName: string | null;
   /** The domain's shared assistant that compares all of its partners. */
   isMarketplace: boolean;
+  /** The number customers dial to reach it; null when none is set. */
+  phone: string | null;
+}
+
+/** What the no-login page shows. */
+export interface PublicNumber {
+  id: string;
+  name: string;
+  domainName: string | null;
+  isMarketplace: boolean;
+  phone: string;
+}
+
+/** A domain and the number of its shared (compare-all) line. */
+export interface DomainNumber {
+  id: string;
+  key: string;
+  name: string;
+  number: string | null;
+  transferNumber: string | null;
 }
 
 export interface UserSummary {

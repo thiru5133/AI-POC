@@ -19,6 +19,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: "/mcp", label: "MCP integration", icon: <PlugIcon />, roles: ["admin"] },
   { to: "/phone", label: "Phone", icon: <PhoneIcon />, roles: ["admin"] },
   { to: "/superadmin/businesses", label: "Businesses", icon: <InboxIcon />, roles: ["superadmin"] },
+  { to: "/superadmin/domain-numbers", label: "Domain numbers", icon: <PhoneIcon />, roles: ["superadmin"] },
   { to: "/superadmin/users", label: "Users", icon: <UsersIcon />, roles: ["superadmin"] },
   { to: "/chat", label: "Chat & voice", icon: <PhoneIcon />, roles: ["admin", "user"] },
   { to: "/conversations", label: "My conversations", icon: <ChatIcon />, roles: ["user"] },

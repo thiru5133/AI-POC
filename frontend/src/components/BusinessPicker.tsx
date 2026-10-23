@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { ApiError, session } from "../services/apiClient";
 import { businessService } from "../services/businessService";
 import type { BusinessPublic } from "../types";
+import { telHref } from "../utils/phone";
 
 /** Lets a customer choose which business they are talking to; renders `children` once one is selected. */
 export function BusinessPicker({ children }: { children: (businessId: string) => ReactNode }) {
@@ -45,6 +46,7 @@ export function BusinessPicker({ children }: { children: (businessId: string) =>
     byDomain.set(key, [...(byDomain.get(key) ?? []), b]);
   }
   const groups = [...byDomain.entries()].sort(([x], [y]) => x.localeCompare(y));
+  const current = businesses.find((b) => b.id === selected);
 
   return (
     <>
@@ -62,6 +64,12 @@ export function BusinessPicker({ children }: { children: (businessId: string) =>
           ))}
         </select>
       </label>
+      {current?.phone && (
+        <p className="muted call-us">
+          Prefer to talk? Call <a href={telHref(current.phone)}>{current.phone}</a>
+          {current.isMarketplace ? ` (all ${current.domainName ?? "partner"} businesses)` : ""}
+        </p>
+      )}
       {selected && children(selected)}
     </>
   );

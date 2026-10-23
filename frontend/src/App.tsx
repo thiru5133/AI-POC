@@ -5,6 +5,7 @@ import { BusinessPicker } from "./components/BusinessPicker";
 import { AppShell } from "./layouts/AppShell";
 import { PublicLayout } from "./layouts/PublicLayout";
 import { AdminHomePage } from "./pages/AdminHomePage";
+import { CallPage } from "./pages/CallPage";
 import { ChatPage } from "./pages/ChatPage";
 import { ConversationsPage } from "./pages/ConversationsPage";
 import { LoginPage } from "./pages/LoginPage";
@@ -13,6 +14,7 @@ import { PhonePage } from "./pages/PhonePage";
 import { RegisterPage } from "./pages/RegisterPage";
 import { VerifyOtpPage } from "./pages/VerifyOtpPage";
 import { BusinessesPage } from "./pages/superadmin/BusinessesPage";
+import { DomainNumbersPage } from "./pages/superadmin/DomainNumbersPage";
 import { UsersPage } from "./pages/superadmin/UsersPage";
 
 /** A customer's history is per business, so they pick one first; an admin's is their own business's. */
@@ -38,6 +40,8 @@ export function App() {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/verify" element={<VerifyOtpPage />} />
+        <Route path="/call" element={<CallPage />} />
+        <Route path="/call/:id" element={<CallPage />} />
       </Route>
 
       <Route element={<AppShell />}>
@@ -52,6 +56,7 @@ export function App() {
         </Route>
         <Route element={<ProtectedRoute roles={["superadmin"]} />}>
           <Route path="/superadmin/businesses" element={<BusinessesPage />} />
+          <Route path="/superadmin/domain-numbers" element={<DomainNumbersPage />} />
           <Route path="/superadmin/users" element={<UsersPage />} />
         </Route>
       </Route>
