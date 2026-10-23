@@ -36,6 +36,13 @@ class Settings(BaseSettings):
     twilio_auth_token: str = ""
     twilio_sms_from: str = ""  # E.164 number or messaging service sender, e.g. +14155550100
     twilio_whatsapp_from: str = ""  # E.164 number enabled for WhatsApp (sandbox: +14155238886)
+    # Public https URL of this backend (e.g. an ngrok URL in development): Twilio calls it, and it is what the signature
+    # of a Twilio request is checked against.
+    public_base_url: str = ""
+    phone_stream_token_seconds: int = 60  # how long the signed link between a call's webhook and its audio stream lives
+    # Phone calls through Vapi (Vapi does telephony, speech and barge-in; this server is its custom LLM).
+    vapi_webhook_secret: str = ""  # the credential Vapi sends with every server message; empty = Vapi calls are refused
+    vapi_llm_token_seconds: int = 7200  # how long a call's LLM URL stays valid: longer than any call
     mcp_secret_key: str = ""  # Fernet key for stored MCP access tokens; derived from JWT_SECRET when empty
     mcp_allow_private_hosts: bool = False  # allow MCP URLs on loopback/private networks (local development)
     mcp_max_servers_per_tenant: int = 5

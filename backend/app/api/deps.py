@@ -28,6 +28,7 @@ from app.tools.builtin import builtin_tools
 from app.tools.registry import ToolRegistry
 from app.voice.base import BrowserVoiceProvider, STTProvider, TTSProvider, VoiceProvider
 from app.voice.deepgram import DeepgramSTT, DeepgramTTS
+from app.voice.phone import CallControl, create_call_control
 
 # Every dependency below is overridable in tests via app.dependency_overrides.
 
@@ -48,6 +49,10 @@ def get_llm() -> LLMProvider:
 def get_tool_registry(settings: Settings = Depends(get_settings)) -> ToolRegistry:
     # Platform tools; a profile opts in through `enabledTools`. A business's own tools come from its MCP servers.
     return ToolRegistry(builtin_tools(create_message_senders(settings, create_email_sender(settings))))
+
+
+def get_call_control(settings: Settings = Depends(get_settings)) -> CallControl:
+    return create_call_control(settings)
 
 
 def get_stt(settings: Settings = Depends(get_settings)) -> STTProvider:

@@ -276,3 +276,32 @@ class UsageOut(CamelModel):
     tool_calls: int
     bookings: int  # estimated from tool names, see app/usage.py
     confirmations: int
+
+
+# ---- phone ----
+class PhoneUpdate(CamelModel):
+    number: str | None = None  # null removes the number
+    transfer_number: str | None = None
+
+    @field_validator("number", "transfer_number", mode="before")
+    @classmethod
+    def _e164(cls, value):
+        from app.voice.phone import normalize_phone
+
+        if value is None or str(value).strip() == "":
+            return None
+        number = normalize_phone(str(value))
+        if number is None:
+            raise ValueError("Enter the number with its country code, for example +914412345678")
+        return number
+
+
+class PhoneOut(CamelModel):
+    number: str | None
+    transfer_number: str | None
+    provider: str  # "vapi" or "twilio": which service connects the number to this server
+    webhook_url: str | None  # what to paste into that service: Vapi's server URL, or Twilio's "A call comes in" webhook
+    domain_name: str | None = None  # the business's domain, for the note about the domain's shared line
+    domain_number: str | None = None  # that shared line's number (read-only here; a superadmin sets it)
+    public_url: str | None  # the no-login page that shows this business's number, for sharing; null while no number is set
+    ready: bool  # the server has what it needs to take calls (public URL and the provider's credentials)
