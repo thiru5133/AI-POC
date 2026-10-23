@@ -10,6 +10,7 @@ Access: HTTP clients must send an API key in the X-API-Key header (HB_MCP_API_KE
 refuses to start without one. It talks to the backend with its own, separate key (HB_BACKEND_API_KEY).
 """
 
+import difflib
 import os
 from typing import Any
 
@@ -52,6 +53,36 @@ def _call(method: str, path: str, **kwargs: Any) -> Any:
     return data
 
 
+def _resolve_hotel(text: str) -> tuple[str, dict | None]:
+    """(hotel code, None), or (text, error) when no hotel matches. A caller says 'Holiday Sing Bay' and a model may pass
+    that, a name or a near-miss code: map it to the real code instead of failing the booking with a 404."""
+    wanted = text.strip().lower()
+    listing = _call("GET", "/api/hotels")
+    if not isinstance(listing, list):  # backend trouble: let the real call report it
+        return wanted.replace(" ", "-"), None
+    codes = {h["code"].lower(): h for h in listing}
+    names = {h["name"].lower(): h["code"].lower() for h in listing}
+    slug = wanted.replace(" ", "-")
+    if slug in codes:
+        return slug, None
+    if wanted in names:
+        return names[wanted], None
+    words = wanted.replace("-", " ").split()
+    by_prefix = [
+        h["code"].lower()
+        for h in listing
+        if words and all(any(nw.startswith(w) for nw in h["name"].lower().split()) for w in words)
+    ]
+    if len(by_prefix) == 1:
+        return by_prefix[0], None
+    close = difflib.get_close_matches(slug, [*codes, *(n.replace(" ", "-") for n in names)], n=1, cutoff=0.7)
+    if close:
+        match = close[0]
+        return codes[match].get("code").lower() if match in codes else names[match.replace("-", " ")], None
+    valid = ", ".join(f"{h['code']} ({h['name']})" for h in listing)
+    return wanted, {"error": {"code": "unknown_hotel", "message": f"No hotel matches '{text}'. Valid hotels: {valid}"}}
+
+
 def _as_object(data: Any, key: str) -> Any:
     """Tools should return one JSON object (a bare list is split into several content blocks by MCP)."""
     return {key: data} if isinstance(data, list) else data
@@ -72,7 +103,8 @@ def get_hotel(hotel: str) -> Any:
     Args:
         hotel: Hotel code from list_hotels, e.g. holiday-colombo.
     """
-    return _call("GET", f"/api/hotels/{hotel.strip().lower()}")
+    code, error = _resolve_hotel(hotel)
+    return error or _call("GET", f"/api/hotels/{code}")
 
 
 @mcp.tool()
@@ -96,6 +128,10 @@ def check_availability(
         category: Optional room type code, e.g. standard, deluxe, suite (types differ per hotel).
     """
     params = {"check_in": check_in, "check_out": check_out}
+    if hotel:
+        hotel, error = _resolve_hotel(hotel)
+        if error:
+            return error
     for key, value in (("hotel", hotel), ("city", city), ("country", country), ("category", category)):
         if value:
             params[key] = value.strip().lower() if key in ("hotel", "category") else value.strip()
@@ -117,11 +153,14 @@ def book_room(
         check_out: Departure date, YYYY-MM-DD.
         guests: Number of guests; must not exceed the room type's maximum.
     """
+    hotel, error = _resolve_hotel(hotel)
+    if error:
+        return error
     return _call(
         "POST",
         "/api/bookings",
         json={
-            "hotel": hotel.strip().lower(),
+            "hotel": hotel,
             "category": category.strip().lower(),
             "guest_name": guest_name,
             "guest_email": guest_email,
