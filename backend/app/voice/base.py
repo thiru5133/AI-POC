@@ -22,14 +22,18 @@ class STTSession(ABC):
 
 class STTProvider(ABC):
     @abstractmethod
-    async def open(self, language: str) -> STTSession: ...
+    async def open(self, language: str, telephony: bool = False) -> STTSession:
+        """`telephony`: the audio will be 8 kHz mu-law, as on a phone line, instead of the browser's format."""
+
 
 
 class TTSProvider(ABC):
     mime_type: str = "audio/mpeg"
 
     @abstractmethod
-    async def synthesize(self, text: str) -> bytes: ...
+    async def synthesize(self, text: str, telephony: bool = False) -> bytes:
+        """Audio for `text`. `telephony`: raw 8 kHz mu-law, as a phone line plays it, instead of mp3."""
+
 
 
 @dataclass

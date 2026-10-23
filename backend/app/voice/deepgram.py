@@ -71,19 +71,20 @@ class DeepgramSTT(STTProvider):
         self._key = api_key
         self._model = model
 
-    async def open(self, language: str) -> STTSession:
+    async def open(self, language: str, telephony: bool = False) -> STTSession:
         if not self._key:
             raise ConfigurationError("DEEPGRAM_API_KEY is not set")
-        params = urlencode(
-            {
-                "model": self._model,
-                "language": language,
-                "smart_format": "true",
-                "interim_results": "true",
-                "endpointing": 600,
-                "utterance_end_ms": 1500,
-            }
-        )
+        options = {
+            "model": self._model,
+            "language": language,
+            "smart_format": "true",
+            "interim_results": "true",
+            "endpointing": 600,
+            "utterance_end_ms": 1500,
+        }
+        if telephony:  # raw audio from a phone line has no container header, so Deepgram must be told the format
+            options.update(encoding="mulaw", sample_rate=8000, channels=1)
+        params = urlencode(options)
         try:
             ws = await websockets.asyncio.client.connect(
                 f"wss://api.deepgram.com/v1/listen?{params}",
@@ -101,13 +102,17 @@ class DeepgramTTS(TTSProvider):
         self._key = api_key
         self._model = model
 
-    async def synthesize(self, text: str) -> bytes:
+    async def synthesize(self, text: str, telephony: bool = False) -> bytes:
         if not self._key:
             raise ConfigurationError("DEEPGRAM_API_KEY is not set")
         async with httpx.AsyncClient(timeout=30) as client:
             resp = await client.post(
                 "https://api.deepgram.com/v1/speak",
-                params={"model": self._model, "encoding": "mp3"},
+                params=(
+                    {"model": self._model, "encoding": "mulaw", "sample_rate": 8000, "container": "none"}
+                    if telephony
+                    else {"model": self._model, "encoding": "mp3"}
+                ),
                 headers={"Authorization": f"Token {self._key}"},
                 json={"text": text},
             )

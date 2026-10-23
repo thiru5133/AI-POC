@@ -43,12 +43,27 @@ class VoiceSession:
         self._speaking = False
         self._log_extra = {"tenant_id": tenant_id, "session_id": conversation_id}
 
+    telephony = False  # a phone line (8 kHz mu-law) instead of the browser's audio
+
+    async def _handshake(self) -> bool:
+        """Finds out which conversation this connection is for. False = refuse it (already closed)."""
+        return True
+
+    async def _after_turn(self) -> None:
+        """Runs after each answer has been spoken."""
+
+    async def _caller_started_talking(self) -> None:
+        if self._speaking:  # barge-in: caller started talking over the assistant
+            await self._cancel_turn()
+
     async def run(self) -> None:
         await self.ws.accept()
+        if not await self._handshake():
+            return
         started = time.monotonic()
         try:
             profile = await self.service.get_profile(self.tenant_id, self.conversation_id, self.user_id)
-            stt = await self.stt.open(profile.identity.language)
+            stt = await self.stt.open(profile.identity.language, self.telephony)
         except AppError as exc:
             await self._send_error(exc.code, exc.message)
             await self.ws.close()
@@ -93,8 +108,7 @@ class VoiceSession:
         async for event in stt.events():
             if not event.is_final:
                 await self._send({"type": "transcript.partial", "text": event.text})
-                if self._speaking:  # barge-in: caller started talking over the assistant
-                    await self._cancel_turn()
+                await self._caller_started_talking()
                 continue
             await self._send({"type": "transcript.final", "text": event.text})
             await self._cancel_turn()
@@ -107,6 +121,7 @@ class VoiceSession:
                 async for sentence in chunks:
                     await self._speak(sentence)
             await self._send({"type": "assistant.audio_end"})
+            await self._after_turn()
         except asyncio.CancelledError:
             raise
         except AppError as exc:
@@ -120,8 +135,8 @@ class VoiceSession:
     async def _speak(self, text: str) -> None:
         await self._send({"type": "assistant.text", "text": text})
         self._speaking = True
-        audio = await self.tts.synthesize(text)
-        await self.ws.send_bytes(audio)
+        audio = await self.tts.synthesize(text, self.telephony)
+        await self._send_audio(audio)
 
     async def _cancel_turn(self) -> None:
         task, self._turn = self._turn, None
@@ -131,6 +146,9 @@ class VoiceSession:
                 await task
             await self._send({"type": "assistant.interrupt"})
         self._speaking = False
+
+    async def _send_audio(self, audio: bytes) -> None:
+        await self.ws.send_bytes(audio)
 
     async def _send(self, payload: dict) -> None:
         await self.ws.send_json(payload)

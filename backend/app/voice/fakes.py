@@ -22,7 +22,7 @@ class FakeSTTSession(STTSession):
 
 
 class FakeSTT(STTProvider):
-    async def open(self, language: str) -> STTSession:
+    async def open(self, language: str, telephony: bool = False) -> STTSession:
         return FakeSTTSession()
 
 
@@ -32,6 +32,6 @@ class FakeTTS(TTSProvider):
     def __init__(self):
         self.spoken: list[str] = []
 
-    async def synthesize(self, text: str) -> bytes:
+    async def synthesize(self, text: str, telephony: bool = False) -> bytes:
         self.spoken.append(text)
         return f"AUDIO:{text}".encode()
