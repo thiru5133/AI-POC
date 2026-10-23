@@ -183,3 +183,16 @@ class UsageEvent(Base):
     kind: Mapped[str] = mapped_column(String(30))
     quantity: Mapped[int] = mapped_column(Integer, default=1)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now, index=True)
+
+
+class PhoneNumber(Base):
+    """The phone number a business answers calls on (one per business). Numbers are unique across businesses, which is
+    how an incoming call finds its business: see repositories/phone.py."""
+
+    __tablename__ = "phone_numbers"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"), unique=True)
+    number: Mapped[str] = mapped_column(String(20), unique=True, index=True)  # E.164, e.g. +914412345678
+    transfer_number: Mapped[str | None] = mapped_column(String(20), nullable=True)  # where a call is handed to a person
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
