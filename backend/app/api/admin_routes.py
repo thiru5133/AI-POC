@@ -8,7 +8,9 @@ from app.api.schemas import (
     BusinessOut,
     BusinessPublicOut,
     BusinessUpdate,
+    DomainNumberOut,
     DomainOut,
+    PhoneUpdate,
     UserDetailOut,
     UserListOut,
     UserSummaryOut,
@@ -49,6 +51,26 @@ async def update_business(
     service: BusinessService = Depends(deps.get_business_service),
 ):
     return await service.set_active(business_id, body.is_active)
+
+
+# ---- the shared phone line of each domain (its compare-all assistant has no admin, so a superadmin sets it) ----
+@router.get("/domain-numbers", response_model=list[DomainNumberOut])
+async def list_domain_numbers(
+    _: User = Depends(deps.require_superadmin),
+    service: BusinessService = Depends(deps.get_business_service),
+):
+    return await service.domain_numbers()
+
+
+@router.put("/domain-numbers/{domain_id}", response_model=DomainNumberOut)
+async def set_domain_number(
+    domain_id: str,
+    body: PhoneUpdate,
+    _: User = Depends(deps.require_superadmin),
+    service: BusinessService = Depends(deps.get_business_service),
+):
+    """Sets (or, with a null number, clears) the number that reaches this domain's compare-all assistant."""
+    return await service.set_domain_number(domain_id, body.number, body.transfer_number)
 
 
 @public_router.get("/domains", response_model=list[DomainOut])

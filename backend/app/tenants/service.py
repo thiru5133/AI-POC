@@ -14,8 +14,9 @@ from app.auth import security
 from app.core.config import Settings
 from app.core.errors import AppError, ConflictError, NotFoundError
 from app.domain import catalog
-from app.models import Domain, DomainProfileRow, Tenant, User
+from app.models import Domain, DomainProfileRow, PhoneNumber, Tenant, User
 from app.notifications.email import ConsoleEmailSender, EmailSender, credentials_email
+from app.repositories.phone import PhoneRepository
 from app.repositories.users import UserRepository
 
 MARKETPLACE_MIN_PARTNERS = 2  # comparing needs at least two partners to be worth offering
@@ -165,6 +166,7 @@ class BusinessService:
             for t in tenants:
                 if not t.is_marketplace and t.domain_id:
                     partners_per_domain[t.domain_id] = partners_per_domain.get(t.domain_id, 0) + 1
+            numbers = dict(session.execute(select(PhoneNumber.tenant_id, PhoneNumber.number)).all())
             out = []
             for t in tenants:
                 if t.is_marketplace and partners_per_domain.get(t.domain_id, 0) < MARKETPLACE_MIN_PARTNERS:
@@ -176,9 +178,53 @@ class BusinessService:
                         "name": t.name,
                         "domain_name": domain.name if domain else None,
                         "is_marketplace": t.is_marketplace,
+                        "phone": numbers.get(t.id),
                     }
                 )
             return out
+
+    # ---- the shared number of each domain's compare-all assistant ----
+    @staticmethod
+    def _marketplace_of(session: Session, domain_id: str) -> Tenant | None:
+        return session.scalars(select(Tenant).where(Tenant.domain_id == domain_id, Tenant.is_marketplace == true())).first()
+
+    def _domain_numbers(self) -> list[dict]:
+        with self._sf() as session:
+            out = []
+            for domain in session.scalars(select(Domain).where(Domain.is_active == true()).order_by(Domain.name)):
+                market = self._marketplace_of(session, domain.id)
+                row = PhoneRepository(session, market.id).get_for_tenant() if market else None
+                out.append(
+                    {
+                        "id": domain.id,
+                        "key": domain.key,
+                        "name": domain.name,
+                        "number": row.number if row else None,
+                        "transfer_number": row.transfer_number if row else None,
+                    }
+                )
+            return out
+
+    def _set_domain_number(self, domain_id: str, number: str | None, transfer: str | None) -> dict:
+        with self._sf() as session:
+            domain = session.get(Domain, domain_id)
+            if domain is None or not domain.is_active:
+                raise NotFoundError("Domain not found")
+            if number is None:  # turning the line off never needs to create the compare-all assistant
+                market = self._marketplace_of(session, domain.id)
+                if market is not None:
+                    PhoneRepository(session, market.id).clear()
+                session.commit()
+                return {"id": domain.id, "key": domain.key, "name": domain.name, "number": None, "transfer_number": None}
+            if transfer == number:
+                raise ConflictError("The transfer number must be different from the domain number", "transfer_loop")
+            market = ensure_marketplace(session, domain)
+            repo = PhoneRepository(session, market.id)
+            if repo.number_taken(number):
+                raise ConflictError("That number is already used by another business or domain", "number_taken")
+            row = repo.save(number, transfer)
+            session.commit()
+            return {"id": domain.id, "key": domain.key, "name": domain.name, "number": row.number, "transfer_number": row.transfer_number}
 
     async def create(self, name: str, admin_name: str, admin_email: str, domain_id: str) -> dict:
         return await asyncio.to_thread(self._create, name, admin_name, admin_email, domain_id)
@@ -194,3 +240,9 @@ class BusinessService:
 
     async def list_public(self) -> list[dict]:
         return await asyncio.to_thread(self._list_public)
+
+    async def domain_numbers(self) -> list[dict]:
+        return await asyncio.to_thread(self._domain_numbers)
+
+    async def set_domain_number(self, domain_id: str, number: str | None, transfer: str | None) -> dict:
+        return await asyncio.to_thread(self._set_domain_number, domain_id, number, transfer)

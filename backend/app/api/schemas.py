@@ -169,6 +169,27 @@ class BusinessPublicOut(CamelModel):
     name: str
     domain_name: str | None = None
     is_marketplace: bool = False
+    phone: str | None = None  # the number customers dial, when the business or domain has one
+
+
+class PublicNumberOut(CamelModel):
+    """What the no-login page shows: a name and the number to call, nothing else."""
+
+    id: str
+    name: str
+    domain_name: str | None = None
+    is_marketplace: bool = False
+    phone: str
+
+
+class DomainNumberOut(CamelModel):
+    """A domain and the number of its shared (compare-all) line."""
+
+    id: str
+    key: str
+    name: str
+    number: str | None = None
+    transfer_number: str | None = None
 
 
 class UserSummaryOut(CamelModel):

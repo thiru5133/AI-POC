@@ -8,6 +8,7 @@ from app.api.admin_routes import router as admin_router
 from app.api.auth_routes import router as auth_router
 from app.api.mcp_routes import router as mcp_router
 from app.api.phone_routes import router as phone_router
+from app.api.public_routes import router as public_router
 from app.api.vapi_routes import router as vapi_router
 from app.api.routes import router
 from app.api.usage_routes import router as usage_router
@@ -31,6 +32,7 @@ app.include_router(mcp_router)
 app.include_router(usage_router)
 app.include_router(phone_router)
 app.include_router(vapi_router)
+app.include_router(public_router)
 
 
 @app.middleware("http")

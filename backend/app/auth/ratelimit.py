@@ -34,3 +34,5 @@ class LoginRateLimiter:
 
 
 login_limiter = LoginRateLimiter()
+# Public no-login pages: at most 60 requests a minute per address. (Counts every request, not only failures.)
+public_limiter = LoginRateLimiter(max_failures=60, window_seconds=60)
