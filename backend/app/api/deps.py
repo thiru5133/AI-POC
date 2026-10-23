@@ -22,6 +22,7 @@ from app.database.session import get_session_factory
 from app.models import User
 from app.notifications.email import EmailSender, create_email_sender
 from app.notifications.messaging import create_message_senders
+from app.notifications.staff import StaffAlerts
 from app.tenants.service import BusinessService
 from app.tools.builtin import builtin_tools
 from app.tools.registry import ToolRegistry
@@ -85,7 +86,9 @@ def get_service(
     mcp_client: McpClient = Depends(get_mcp_client),
 ) -> ConversationService:
     mcp = McpToolSource(sessions, settings, mcp_client, _mcp_tool_cache, _mcp_result_cache)
-    return ConversationService(sessions, ConversationEngine(llm, tools, mcp=mcp))
+    email = create_email_sender(settings)
+    alerts = StaffAlerts(sessions, create_message_senders(settings, email)["sms"], email)
+    return ConversationService(sessions, ConversationEngine(llm, tools, mcp=mcp), alerts)
 
 
 # ---- auth ----

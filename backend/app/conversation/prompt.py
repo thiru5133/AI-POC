@@ -1,8 +1,6 @@
-from datetime import datetime
-from zoneinfo import ZoneInfo
-
 from app.conversation.context import ConversationContext
 from app.domain.hours import describe, is_open, next_opening
+from app.domain.hours import now_in as _now
 from app.domain.profile import DomainProfile
 
 REFUSAL = "I'm sorry, I don't have that information."
@@ -12,13 +10,6 @@ _STYLE = {
     "conversational": "Speak in a warm, friendly, conversational tone.",
     "urgent": "Speak calmly, concisely and with a sense of urgency.",
 }
-
-
-def _now(timezone: str) -> datetime:
-    try:
-        return datetime.now(ZoneInfo(timezone))
-    except Exception:
-        return datetime.now(ZoneInfo("UTC"))
 
 
 def _today(timezone: str) -> str:
@@ -78,6 +69,9 @@ def build_system_prompt(profile: DomainProfile, ctx: ConversationContext, tools_
             "- Before an action that changes something (a booking or cancellation), confirm the details with the "
             "caller. Dates passed to tools must be exact, in the format the tool asks for.",
             "- Read results back naturally; never read out technical ids, JSON or field names.",
+            "- If a tool fails or returns an error, tell the caller in one short sentence which part of the system is "
+            "having trouble (for example the booking system), with no technical details, and ask if they would like "
+            "to be connected to a person. If they agree, call request_human.",
         ]
     if "flag_urgency" in profile.enabled_tools:
         parts.append(
@@ -88,6 +82,15 @@ def build_system_prompt(profile: DomainProfile, ctx: ConversationContext, tools_
         parts.append(f"- EMERGENCY (danger to life, serious injury or illness, fire, crime): {ident.emergency_guidance}")
     if ctx.urgency != "normal":
         parts += ["", f"CALLER STATE: {ctx.urgency}" + (f" ({ctx.urgency_reason})" if ctx.urgency_reason else "")]
+    if ctx.business_phone:
+        parts.append(
+            f"- The organization's phone number is {ctx.business_phone}. Give it only when someone asks how to call or "
+            "contact the organization, reading the digits slowly in small groups."
+        )
+    if ctx.caller.phone:
+        parts.append(
+            f"- The caller's phone number (from caller ID) is {ctx.caller.phone}; offer to use it rather than asking for it."
+        )
     if ctx.entities:
         parts += ["", f"INFORMATION ALREADY COLLECTED: {ctx.entities}"]
     return "\n".join(parts)

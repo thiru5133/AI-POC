@@ -32,11 +32,17 @@ def request_human_tool() -> Tool:
     async def handler(ctx: ConversationContext, args: dict[str, Any]) -> dict[str, Any]:
         ctx.handoff_requested = True
         ctx.handoff_reason = str(args.get("reason") or "")[:200] or None
-        return {
-            "status": "recorded",
-            "note": "A staff member will follow up with the caller. A live transfer is not available yet, so tell "
-            "the caller someone will contact them; do not say they are being connected right now.",
-        }
+        if ctx.transfer_available:
+            note = (
+                "The call is being transferred to a staff member right now. In one short sentence, tell the caller "
+                "to hold while you connect them."
+            )
+        else:
+            note = (
+                "A staff member will follow up with the caller. A live transfer is not available right now, so tell "
+                "the caller someone will contact them; do not say they are being connected right now."
+            )
+        return {"status": "recorded", "note": note}
 
     return Tool(
         "request_human",

@@ -1,6 +1,7 @@
 """Weekly operating hours: {"mon": "09:00-18:00", "sun": "closed"}. A day that is not listed counts as closed."""
 
 from datetime import datetime, time, timedelta
+from zoneinfo import ZoneInfo
 
 DAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 _NAMES = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
@@ -55,3 +56,15 @@ def next_opening(hours: dict[str, str], now: datetime) -> str | None:
 
 def describe(hours: dict[str, str]) -> str:
     return ", ".join(f"{_NAMES[i][:3]} {hours.get(d, 'closed')}" for i, d in enumerate(DAYS))
+
+
+def now_in(timezone: str) -> datetime:
+    try:
+        return datetime.now(ZoneInfo(timezone))
+    except Exception:
+        return datetime.now(ZoneInfo("UTC"))
+
+
+def open_now(hours: dict[str, str], timezone: str) -> bool:
+    """Empty hours mean the business is always open."""
+    return not hours or is_open(hours, now_in(timezone))

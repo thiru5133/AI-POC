@@ -1,24 +1,47 @@
 import asyncio
 import logging
+import re
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass
 from typing import Any
 
 from sqlalchemy.orm import Session
 
+from app.ai.base import LLMBusyError
 from app.conversation.context import ConversationContext
 from app.conversation.engine import ConversationEngine
 from app.core.errors import NotFoundError
 from app.domain.loader import parse_profile
 from app.domain.profile import DomainProfile
 from app.models import Conversation
+from app.notifications.staff import StaffAlerts
 from app import usage
+from app.repositories.phone import PhoneRepository
 from app.repositories.conversations import ConversationRepository, DomainProfileRepository
 from app.repositories.usage import UsageRepository
 
 log = logging.getLogger(__name__)
 
 HISTORY_LIMIT = 40
+
+BUSY_REPLY = "Sorry, we're very busy right now. Could you please say that again in a moment?"
+OFFER_TRANSFER = (
+    "I'm sorry, I'm having trouble with our system right now. Would you like me to connect you with someone from the team?"
+)
+OFFER_CALLBACK = (
+    "I'm sorry, I'm having trouble with our system right now. Would you like me to ask someone from the team to contact you?"
+)
+ACCEPTED_TRANSFER = "Okay, I'm connecting you to the team now. Please hold."
+ACCEPTED_CALLBACK = "Okay, I've let the team know, and someone will contact you as soon as possible."
+
+_YES = {"yes", "yeah", "yep", "yup", "sure", "please", "okay", "ok", "fine", "definitely"}
+_NO = {"no", "nope", "nah", "not", "never", "dont", "don't"}
+
+
+def accepts_offer(text: str) -> bool:
+    """Whether the caller said yes to an offer of a person (English; anything unclear counts as no)."""
+    words = set(re.findall(r"[a-z']+", text.lower()))
+    return bool(words & _YES) and not words & _NO
 
 
 @dataclass
@@ -31,9 +54,13 @@ class TurnState:
 class ConversationService:
     """Orchestrates persistence (tenant-scoped repositories) around the pure ConversationEngine."""
 
-    def __init__(self, session_factory: Callable[[], Session], engine: ConversationEngine):
+    def __init__(
+        self, session_factory: Callable[[], Session], engine: ConversationEngine, alerts: StaffAlerts | None = None
+    ):
         self._sf = session_factory
         self.engine = engine
+        self._alerts = alerts
+        self._tasks: set[asyncio.Task] = set()
 
     # ---- sync DB helpers (run in a worker thread from async callers) ----
     def _start(self, tenant_id: str, user_id: str | None) -> tuple[str, str]:
@@ -58,9 +85,10 @@ class ConversationService:
                 raise NotFoundError("Conversation not found")
             profile_row = DomainProfileRepository(session, tenant_id).get(conv.domain_profile_id)
             profile = parse_profile(profile_row.config)
+            phone = PhoneRepository(session, tenant_id).get_for_tenant()
             ctx = ConversationContext(
                 **{**(conv.context or {}), "session_id": conv.id, "tenant_id": tenant_id,
-                   "domain_profile_id": conv.domain_profile_id}
+                   "domain_profile_id": conv.domain_profile_id, "business_phone": phone.number if phone else None}
             )
             history = [
                 {"role": m.role, "content": m.content} for m in repo.messages(conv.id, HISTORY_LIMIT)
@@ -74,7 +102,7 @@ class ConversationService:
             repo.add_message(ctx.session_id, "user", user_text, intent=ctx.intent)
             if reply.strip():
                 repo.add_message(ctx.session_id, "assistant", reply.strip())
-            conv.context = ctx.model_dump(exclude={"session_id", "tenant_id", "domain_profile_id"})
+            conv.context = ctx.model_dump(exclude={"session_id", "tenant_id", "domain_profile_id", "business_phone"})
             meter = UsageRepository(session, tenant_id)
             meter.record(usage.MESSAGE, 1, ctx.session_id)
             for kind, quantity in ctx.usage_log:
@@ -127,13 +155,72 @@ class ConversationService:
         state = await asyncio.to_thread(self._load, tenant_id, conversation_id, user_id)
         collected: list[str] = []
         try:
-            async for delta in self.engine.run_turn(state.profile, state.ctx, state.history, user_text):
+            async for delta in self._turn(state, user_text):
                 collected.append(delta)
                 yield delta
         finally:
+            ping = self._needs_ping(state)
             await asyncio.shield(
                 asyncio.to_thread(self._save_turn, tenant_id, user_id, state.ctx, user_text, "".join(collected))
             )
+            if ping:
+                self._ping_staff(tenant_id, state)
+
+    async def _turn(self, state: TurnState, user_text: str) -> AsyncIterator[str]:
+        """One turn. When the assistant itself breaks, the caller is told so and offered a person; their answer to that
+        offer is handled here too, because the assistant may still be broken."""
+        ctx = state.ctx
+        if ctx.pending_offer:
+            issue, ctx.pending_offer = ctx.pending_offer, None
+            if accepts_offer(user_text):
+                ctx.handoff_requested = True
+                ctx.handoff_reason = f"The caller accepted a person after a system problem ({issue})."[:200]
+                yield ACCEPTED_TRANSFER if ctx.transfer_available else ACCEPTED_CALLBACK
+                return
+        try:
+            async for delta in self.engine.run_turn(state.profile, ctx, state.history, user_text):
+                yield delta
+        except LLMBusyError:
+            log.warning("the model provider is rate limiting us", extra={"tenant_id": ctx.tenant_id, "session_id": ctx.session_id})
+            yield BUSY_REPLY  # a passing limit: ask them to repeat, do not offer a person
+        except Exception:
+            log.exception("turn failed", extra={"tenant_id": ctx.tenant_id, "session_id": ctx.session_id})
+            ctx.pending_offer = "the assistant could not answer"
+            yield OFFER_TRANSFER if ctx.transfer_available else OFFER_CALLBACK
+
+    def _needs_ping(self, state: TurnState) -> bool:
+        """Whether this turn is the first to need a person: the business's people are pinged once per conversation."""
+        ctx = state.ctx
+        if self._alerts is None or not ctx.handoff_requested or ctx.staff_alerted:
+            return False
+        ctx.staff_alerted = True
+        return True
+
+    def _ping_staff(self, tenant_id: str, state: TurnState) -> None:
+        ctx = state.ctx
+        reason = ctx.handoff_reason or "They asked for a person."
+        if ctx.urgency != "normal":
+            reason += f" Caller state: {ctx.urgency}."
+        task = asyncio.create_task(
+            asyncio.to_thread(
+                self._alerts.send, tenant_id, state.profile.identity.organization_name, reason, ctx.caller.phone
+            )
+        )
+        self._tasks.add(task)  # keep a reference until it finishes
+        task.add_done_callback(self._tasks.discard)
+
+    async def update_context(self, tenant_id: str, conversation_id: str, fields: dict[str, Any]) -> None:
+        """Merges `fields` into a conversation's saved context (how a call's channel and caller are recorded)."""
+
+        def write() -> None:
+            with self._sf() as session:
+                conv = ConversationRepository(session, tenant_id).get(conversation_id)
+                if conv is None:
+                    raise NotFoundError("Conversation not found")
+                conv.context = {**(conv.context or {}), **fields}
+                session.commit()
+
+        await asyncio.to_thread(write)
 
     async def record_usage(self, tenant_id: str, conversation_id: str, kind: str, quantity: int) -> None:
         def write() -> None:
