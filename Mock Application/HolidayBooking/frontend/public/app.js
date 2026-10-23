@@ -23,6 +23,19 @@ async function loadLocations() {
   }
 }
 
+async function loadContact() {
+  try {
+    const { reservations_phone: phone } = await api("/api/contact");
+    if (!phone) return;
+    const link = $("callUs");
+    link.textContent = `Call reservations: ${phone}`; // text only: the number comes from the server
+    link.href = `tel:${phone.replace(/[^+\d]/g, "")}`;
+    link.hidden = false;
+  } catch {
+    // the number is a convenience: the page works without it
+  }
+}
+
 function renderResults(result) {
   const box = $("results");
   box.replaceChildren();
@@ -157,4 +170,5 @@ $("search").addEventListener("submit", search);
 $("book").addEventListener("submit", book);
 $("lookup").addEventListener("submit", lookup);
 $("cancelBook").onclick = () => ($("bookingCard").hidden = true);
+loadContact();
 loadLocations().then(search);

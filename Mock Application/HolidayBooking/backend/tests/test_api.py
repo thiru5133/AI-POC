@@ -149,3 +149,20 @@ def test_api_fails_closed_when_no_key_is_configured(client, monkeypatch):
 @pytest.mark.parametrize("path", ["/api/hotels", "/api/availability?check_in=2030-01-01&check_out=2030-01-02"])
 def test_guest_endpoints_need_no_login(client, path):
     assert client.get(path).status_code == 200
+
+
+# ---------- the reservations number ----------
+def test_contact_gives_the_configured_number(client, monkeypatch):
+    monkeypatch.setenv("HB_RESERVATIONS_PHONE", " +17692630020 ")
+    assert client.get("/api/contact").json() == {"reservations_phone": "+17692630020"}
+
+
+def test_contact_is_null_when_no_number_is_configured(client, monkeypatch):
+    monkeypatch.delenv("HB_RESERVATIONS_PHONE", raising=False)
+    assert client.get("/api/contact").json() == {"reservations_phone": None}
+    monkeypatch.setenv("HB_RESERVATIONS_PHONE", "  ")
+    assert client.get("/api/contact").json() == {"reservations_phone": None}
+
+
+def test_contact_needs_the_api_key(client):
+    assert client.get("/api/contact", headers={"X-API-Key": "wrong"}).status_code == 401

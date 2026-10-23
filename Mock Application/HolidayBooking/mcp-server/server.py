@@ -148,6 +148,19 @@ def list_bookings(guest_email: str, status: str | None = None) -> Any:
 
 
 @mcp.tool()
+def get_contact_info() -> Any:
+    """The hotel group's reservations phone number, for a guest who wants to call or be called back. Use it when
+    the guest asks how to phone the hotel, or when a booking cannot be completed here."""
+    data = _call("GET", "/api/contact")
+    if isinstance(data, dict) and "error" in data:
+        return data
+    phone = data.get("reservations_phone") if isinstance(data, dict) else None
+    if not phone:
+        return {"error": {"code": "not_configured", "message": "No reservations phone number is configured."}}
+    return {"reservations_phone": phone}
+
+
+@mcp.tool()
 def cancel_booking(reference: str) -> Any:
     """Cancel a booking by reference. The room becomes available again. Confirm with the guest first."""
     return _call("POST", f"/api/bookings/{reference.strip()}/cancel")

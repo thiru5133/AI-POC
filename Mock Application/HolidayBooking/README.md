@@ -114,7 +114,8 @@ Errors look like `{"error": {"code", "message"}}` (e.g. `sold_out`, `unknown_hot
 
 ## MCP tools
 
-`list_hotels`, `get_hotel`, `check_availability`, `book_room`, `get_booking`, `list_bookings`, `cancel_booking`.
+`list_hotels`, `get_hotel`, `check_availability`, `book_room`, `get_booking`, `list_bookings`, `cancel_booking`,
+`get_contact_info` (the reservations phone number, set with `HB_RESERVATIONS_PHONE`; also shown in the guest page's header).
 Hotels are addressed by code (see `list_hotels`); availability can be searched by hotel, city or country.
 
 Connect an MCP client to `http://localhost:8101/mcp` with the `X-API-Key` header. For clients that launch servers as a

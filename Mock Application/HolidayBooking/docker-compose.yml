@@ -34,6 +34,7 @@ services:
       HB_SUPERADMIN_NAME: ${HB_SUPERADMIN_NAME:-Super Admin}
       HB_COOKIE_SECURE: ${HB_COOKIE_SECURE:-false}
       HB_MAX_NIGHTS: ${HB_MAX_NIGHTS:-30}
+      HB_RESERVATIONS_PHONE: ${HB_RESERVATIONS_PHONE:-}
       HB_DB_HOST: ${HB_DB_HOST:-host.docker.internal}
       HB_DB_PORT: ${HB_DB_PORT:-1433}
       HB_DB_NAME: ${HB_DB_NAME:-holidaybooking}

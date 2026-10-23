@@ -1,5 +1,6 @@
 """Guest-facing endpoints: browse hotels, check availability, book, look up and cancel bookings."""
 
+import os
 from datetime import date
 
 from fastapi import APIRouter, Depends
@@ -10,6 +11,12 @@ from app.schemas import BookingRequest
 from app.security import get_conn
 
 router = APIRouter(tags=["guest"])
+
+
+@router.get("/contact")
+def contact():
+    """The reservations phone number guests can call (HB_RESERVATIONS_PHONE); null when none is configured."""
+    return {"reservations_phone": os.getenv("HB_RESERVATIONS_PHONE", "").strip() or None}
 
 
 @router.get("/hotels")

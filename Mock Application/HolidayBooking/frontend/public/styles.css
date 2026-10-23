@@ -30,6 +30,9 @@ h1, h2, h3 { margin: 0; }
 .top { padding: 24px 16px 8px; max-width: 1040px; margin: 0 auto; display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
 .top h1 { color: var(--accent); }
 .top p { margin: 4px 0 0; color: var(--muted); }
+.header-links { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.call-link { color: #fff; background: var(--accent); text-decoration: none; border-radius: 8px; padding: 6px 12px; font-size: 0.9rem; }
+.call-link[hidden] { display: none; }
 .staff-link { color: var(--accent); text-decoration: none; border: 1px solid var(--border); border-radius: 8px; padding: 6px 12px; font-size: 0.9rem; }
 main { max-width: 1040px; margin: 0 auto; padding: 8px 16px 48px; display: grid; gap: 16px; }
 #app, #view { display: grid; gap: 16px; }
