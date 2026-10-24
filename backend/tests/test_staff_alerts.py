@@ -181,3 +181,60 @@ def test_when_nothing_arrives_it_is_logged_as_an_error(session_factory, staff, c
     with caplog.at_level("ERROR"):
         assert alerts.send(TENANT, "Demo Hotel", "r", "+919000011122") is False
     assert "NOT delivered" in caplog.text
+
+
+# ---------- a failing business system alerts staff without moving the caller ----------
+class _Tools:
+    definitions = [{"name": "hotel__create_booking", "description": "d", "input_schema": {"type": "object", "properties": {}}}]
+
+    def __init__(self, fail):
+        self.fail = fail
+
+    def owns(self, name):
+        return name == "hotel__create_booking"
+
+    async def execute(self, name, args):
+        return ({"error": "boom"} if self.fail else {"ok": True}), self.fail
+
+
+class _Mcp:
+    def __init__(self, fail):
+        self.tools = _Tools(fail)
+
+    async def for_tenant(self, tenant_id):
+        return self.tools
+
+
+class _CallsBooking(LLMProvider):
+    def __init__(self):
+        self.round = 0
+
+    async def stream(self, system, messages, tools):
+        self.round += 1
+        if self.round % 2:
+            yield LLMEvent(type="tool_use", tool_id=f"t{self.round}", tool_name="hotel__create_booking", tool_input={})
+        else:
+            yield LLMEvent(type="text", text="Sorry, the booking system is having trouble.")
+
+
+async def _book(session_factory, fail):
+    sms, email = RecordingSms(), RecordingEmailSender()
+    engine = ConversationEngine(_CallsBooking(), mcp=_Mcp(fail))
+    service = ConversationService(session_factory, engine, StaffAlerts(session_factory, sms, email))
+    conv_id = await call(service)
+    await service.reply(TENANT, conv_id, "Book me a room")
+    await settle(service)
+    return service, conv_id, sms, email
+
+
+async def test_a_failed_booking_tool_tells_the_business_but_does_not_transfer(session_factory, staff):
+    service, conv_id, sms, email = await _book(session_factory, fail=True)
+    state = await service.get(TENANT, conv_id)
+    assert not state["context"]["handoff_requested"]  # the live call is not moved
+    assert len(sms.sent) == 1 and "+919000011122" in sms.sent[0][1] and "create_booking" in sms.sent[0][1]
+    assert email.sent[0][1].startswith("System problem on a call")
+
+
+async def test_a_working_tool_alerts_nobody(session_factory, staff):
+    _, _, sms, email = await _book(session_factory, fail=False)
+    assert sms.sent == [] and email.sent == []

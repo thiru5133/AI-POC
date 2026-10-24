@@ -191,14 +191,14 @@ class ConversationService:
     def _needs_ping(self, state: TurnState) -> bool:
         """Whether this turn is the first to need a person: the business's people are pinged once per conversation."""
         ctx = state.ctx
-        if self._alerts is None or not ctx.handoff_requested or ctx.staff_alerted:
+        if self._alerts is None or not (ctx.handoff_requested or ctx.alert_reason) or ctx.staff_alerted:
             return False
         ctx.staff_alerted = True
         return True
 
     def _ping_staff(self, tenant_id: str, state: TurnState) -> None:
         ctx = state.ctx
-        reason = ctx.handoff_reason or "They asked for a person."
+        reason = ctx.handoff_reason or ctx.alert_reason or "They asked for a person."
         if ctx.urgency != "normal":
             reason += f" Caller state: {ctx.urgency}."
         task = asyncio.create_task(
@@ -209,6 +209,7 @@ class ConversationService:
                 reason,
                 ctx.caller.phone,
                 ctx.session_id,
+                None if ctx.handoff_requested else f"System problem on a call at {state.profile.identity.organization_name}",
             )
         )
         self._tasks.add(task)  # keep a reference until it finishes

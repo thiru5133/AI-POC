@@ -84,6 +84,9 @@ class ConversationEngine:
                 else:
                     output, is_error = await self.tools.execute(call.tool_name, ctx, call.tool_input)
                 ctx.last_action = call.tool_name
+                if is_error and mcp_tools and mcp_tools.owns(call.tool_name) and not ctx.alert_reason:
+                    # The business's own system failed: its people hear about it even if the caller hangs up.
+                    ctx.alert_reason = f"The business's system failed ({call.tool_name.rsplit('__', 1)[-1]})."[:200]
                 if not is_error:
                     ctx.record_usage(usage.TOOL_CALL)
                     if usage.is_booking_tool(call.tool_name):

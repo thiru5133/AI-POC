@@ -36,6 +36,8 @@ class ConversationContext(BaseModel):
     transfer_available: bool = False  # a call can be handed to a person right now (a number is set and it is open)
     handoff_requested: bool = False  # the caller asked for a person (set by the request_human tool)
     handoff_reason: str | None = None
+    # Staff should be told about this call without moving the caller: set when one of the business's own tools fails.
+    alert_reason: str | None = None
     # The number callers dial, from the business's Phone page. Looked up on every turn (so a change applies at once)
     # and never saved with the conversation.
     business_phone: str | None = None
