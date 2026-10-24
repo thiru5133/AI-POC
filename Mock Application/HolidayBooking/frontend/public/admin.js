@@ -344,17 +344,36 @@ function hotelDetailActions(action, dataset) {
 }
 
 // ---------- bookings ----------
-const bookingFilters = { hotel: "", status: "", email: "" };
+const bookingFilters = { when: "", hotel: "", status: "", email: "" };
+const WHEN_OPTIONS = [["", "Any date"], ["booked", "Booked today"], ["check_in", "Checking in today"], ["check_out", "Checking out today"], ["staying", "Staying today"]];
+
+// The staff member's own today (local date), not the server's or UTC's.
+function localToday() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function bookingQuery() {
+  const params = new URLSearchParams(Object.entries(bookingFilters).filter(([, v]) => v));
+  if (bookingFilters.when) {
+    params.set("on", localToday());
+    params.set("tz_offset", String(new Date().getTimezoneOffset()));
+  }
+  return params;
+}
 
 async function renderBookings() {
   const [hotels, bookings] = await Promise.all([
     api("/api/admin/hotels"),
-    api(`/api/admin/bookings?${new URLSearchParams(Object.entries(bookingFilters).filter(([, v]) => v))}`),
+    api(`/api/admin/bookings?${bookingQuery()}`),
   ]);
   $("view").innerHTML = `
     <div class="card">
       <h2>Bookings</h2>
       <form id="bookingFilter" class="row">
+        <label>Date <select id="fWhen">${WHEN_OPTIONS
+          .map(([v, l]) => `<option value="${v}" ${bookingFilters.when === v ? "selected" : ""}>${l}</option>`)
+          .join("")}</select></label>
         <label>Hotel <select id="fHotel"><option value="">All hotels</option>${hotels
           .map((h) => `<option value="${esc(h.code)}" ${bookingFilters.hotel === h.code ? "selected" : ""}>${esc(h.name)}</option>`)
           .join("")}</select></label>
@@ -385,7 +404,7 @@ async function renderBookings() {
     </div>`;
   $("bookingFilter").onsubmit = (event) => {
     event.preventDefault();
-    Object.assign(bookingFilters, { hotel: $("fHotel").value, status: $("fStatus").value, email: $("fEmail").value.trim() });
+    Object.assign(bookingFilters, { when: $("fWhen").value, hotel: $("fHotel").value, status: $("fStatus").value, email: $("fEmail").value.trim() });
     render();
   };
 }

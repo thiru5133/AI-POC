@@ -302,3 +302,22 @@ def test_resetting_or_changing_a_password_signs_everyone_out(client, root, staff
 def test_password_length_limits(client, root, password):
     resp = client.post("/api/admin/users", json={"email": "p@example.com", "name": "P", "password": password}, headers=root)
     assert resp.status_code == 422
+
+
+def test_staff_filter_bookings_by_today(client, staff):
+    from datetime import date
+
+    today = date.today().isoformat()
+    later = book(client, "holiday-dubai", "suite", email="a@example.com", start=10, end=12).json()["reference"]
+    # a stay is only in the past/today for rows created directly, so use the filters on what the API can book
+    params = {"on": today, "tz_offset": 0}
+    booked = client.get("/api/admin/bookings", params={**params, "when": "booked"}, headers=staff).json()
+    assert [b["reference"] for b in booked] == [later]  # made just now (UTC today may differ from local only near midnight)
+    assert client.get("/api/admin/bookings", params={**params, "when": "check_in"}, headers=staff).json() == []
+    assert client.get("/api/admin/bookings", params={**params, "when": "staying"}, headers=staff).json() == []
+    on_check_in = {"on": day(10), "tz_offset": 0}
+    assert len(client.get("/api/admin/bookings", params={**on_check_in, "when": "check_in"}, headers=staff).json()) == 1
+    assert len(client.get("/api/admin/bookings", params={**on_check_in, "when": "staying"}, headers=staff).json()) == 1
+    assert len(client.get("/api/admin/bookings", params={"on": day(12), "when": "check_out"}, headers=staff).json()) == 1
+    assert client.get("/api/admin/bookings", params={"on": day(12), "when": "staying"}, headers=staff).json() == []
+    assert client.get("/api/admin/bookings", params={"when": "nonsense", "on": today}, headers=staff).status_code == 422

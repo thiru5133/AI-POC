@@ -1,6 +1,9 @@
 """Staff endpoints: manage hotels, room types, rooms and bookings (admin + superadmin) and users (superadmin)."""
 
-from fastapi import APIRouter, Depends, Response
+from datetime import date
+from typing import Literal
+
+from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.engine import Connection
 
 from app import accounts, catalog, service
@@ -95,9 +98,17 @@ def delete_room(room_id: int, conn: Connection = Depends(get_conn)):
 # ---------- bookings (staff can see and cancel any booking) ----------
 @router.get("/bookings")
 def list_bookings(
-    hotel: str | None = None, status: str | None = None, email: str | None = None, conn: Connection = Depends(get_conn)
+    hotel: str | None = None,
+    status: str | None = None,
+    email: str | None = None,
+    when: Literal["booked", "check_in", "check_out", "staying"] | None = None,
+    on: date | None = None,
+    tz_offset: int = Query(default=0, ge=-840, le=840),
+    conn: Connection = Depends(get_conn),
 ):
-    return service.list_bookings(conn, email=email, status=status, hotel=hotel, limit=500)
+    return service.list_bookings(
+        conn, email=email, status=status, hotel=hotel, limit=500, when=when, on=on, tz_offset_minutes=tz_offset
+    )
 
 
 @router.post("/bookings/{reference}/cancel")

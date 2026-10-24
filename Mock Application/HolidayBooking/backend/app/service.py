@@ -2,7 +2,7 @@
 
 import os
 import secrets
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy import and_, func, select, true
 from sqlalchemy.engine import Connection
@@ -223,7 +223,12 @@ def list_bookings(
     status: str | None = None,
     hotel: str | None = None,
     limit: int = 200,
+    when: str | None = None,
+    on: date | None = None,
+    tz_offset_minutes: int = 0,
 ) -> list[dict]:
+    """`when` narrows to one day `on` (the staff member's today): booked | check_in | check_out | staying.
+    `tz_offset_minutes` is the browser's offset from UTC (as from getTimezoneOffset), since created_at is stored in UTC."""
     stmt = _booking_query().order_by(bookings.c.check_in.desc(), bookings.c.created_at.desc()).limit(limit)
     if email:
         stmt = stmt.where(bookings.c.guest_email == email.strip().lower())
@@ -231,6 +236,16 @@ def list_bookings(
         stmt = stmt.where(bookings.c.status == status)
     if hotel:
         stmt = stmt.where(bookings.c.hotel_code == hotel)
+    if when and on:
+        if when == "booked":
+            start = datetime(on.year, on.month, on.day) + timedelta(minutes=tz_offset_minutes)
+            stmt = stmt.where(bookings.c.created_at >= start, bookings.c.created_at < start + timedelta(days=1))
+        elif when == "check_in":
+            stmt = stmt.where(bookings.c.check_in == on)
+        elif when == "check_out":
+            stmt = stmt.where(bookings.c.check_out == on)
+        elif when == "staying":
+            stmt = stmt.where(bookings.c.check_in <= on, bookings.c.check_out > on)
     return [dict(r._mapping) for r in conn.execute(stmt)]
 
 
