@@ -4,7 +4,7 @@ from typing import Any
 
 from app import usage
 from app.ai.base import LLMProvider
-from app.conversation.context import ConversationContext
+from app.conversation.context import CALL_CLOSING, ConversationContext
 from app.conversation.prompt import build_system_prompt
 from app.domain.profile import DomainProfile
 from app.mcp.tools import McpToolSource
@@ -45,6 +45,7 @@ class ConversationEngine:
         system = build_system_prompt(profile, ctx, tools_available=bool(tool_defs))
         messages = [*history, {"role": "user", "content": user_text}]
 
+        booked = False
         for _ in range(self.max_tool_rounds + 1):
             text_parts: list[str] = []
             calls = []
@@ -55,6 +56,10 @@ class ConversationEngine:
                 else:
                     calls.append(event)
             if not calls:
+                # A booked call is finished: say goodbye so the line is dropped, unless the assistant is still
+                # waiting for an answer from the caller.
+                if booked and ctx.channel == "phone" and not "".join(text_parts).rstrip().endswith("?"):
+                    yield f" {CALL_CLOSING}"
                 return
 
             blocks: list[dict[str, Any]] = []
@@ -83,6 +88,7 @@ class ConversationEngine:
                     ctx.record_usage(usage.TOOL_CALL)
                     if usage.is_booking_tool(call.tool_name):
                         ctx.record_usage(usage.BOOKING)
+                        booked = True
                 results.append(
                     {
                         "type": "tool_result",

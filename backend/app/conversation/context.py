@@ -3,6 +3,11 @@ from typing import Any
 from pydantic import BaseModel, Field, PrivateAttr
 
 
+# Said as the last words of a phone call once a booking is made. The voice provider hangs up when it hears it, so
+# callers are not left holding a billed, silent line.
+CALL_CLOSING = "Thank you for calling. Goodbye."
+
+
 class Caller(BaseModel):
     name: str | None = None
     phone: str | None = None

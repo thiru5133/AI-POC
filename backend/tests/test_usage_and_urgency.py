@@ -149,3 +149,48 @@ def test_conversation_list_shows_urgency_and_handoff(client, session_factory):
         session.commit()
     item = client.get("/api/conversations", headers=a["headers"]).json()["items"][0]
     assert item["urgency"] == "emergency" and item["handoffRequested"] is True
+
+
+# ---------- hanging up after a booking ----------
+async def _spoken(tool_name, channel, final_text="Done."):
+    from app.conversation.context import CALL_CLOSING  # noqa: F401
+
+    async def ok(c, args):
+        return {"ok": True}
+
+    class _Llm(_CallsTool):
+        async def stream(self, system, messages, tools):
+            self.round += 1
+            if self.round == 1:
+                yield LLMEvent(type="tool_use", tool_id="t1", tool_name=self.tool, tool_input={})
+            else:
+                yield LLMEvent(type="text", text=final_text)
+
+    registry = ToolRegistry([Tool(tool_name, "d", {"type": "object", "properties": {}}, ok)])
+    profile = parse_profile({**load_profile_file("hotel"), "enabledTools": [tool_name]})
+    c = ctx()
+    c.channel = channel
+    return "".join([x async for x in ConversationEngine(_Llm(tool_name), registry).run_turn(profile, c, [], "go")])
+
+
+async def test_a_phone_call_says_goodbye_after_a_booking():
+    from app.conversation.context import CALL_CLOSING
+
+    assert (await _spoken("hotel__create_booking", "phone")).endswith(CALL_CLOSING)
+
+
+async def test_no_goodbye_for_other_tools_chat_or_an_open_question():
+    from app.conversation.context import CALL_CLOSING
+
+    assert CALL_CLOSING not in await _spoken("hotel__search_rooms", "phone")
+    assert CALL_CLOSING not in await _spoken("hotel__create_booking", "web")
+    assert CALL_CLOSING not in await _spoken("hotel__create_booking", "phone", "Booked. Want an email?")
+
+
+def test_vapi_assistant_ends_the_call_on_the_closing_phrase():
+    from app.conversation.context import CALL_CLOSING
+    from app.core.config import get_settings
+    from app.voice import vapi
+
+    profile = parse_profile(load_profile_file("hotel"))
+    assert vapi.assistant_config(get_settings(), profile, "https://x/llm")["endCallPhrases"] == [CALL_CLOSING]

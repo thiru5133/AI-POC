@@ -16,6 +16,7 @@ from typing import Any
 
 import jwt
 
+from app.conversation.context import CALL_CLOSING
 from app.core.config import Settings
 from app.domain.profile import DomainProfile
 
@@ -75,6 +76,7 @@ def assistant_config(settings: Settings, profile: DomainProfile, llm_url: str) -
         "transcriber": {"provider": "deepgram", "model": settings.deepgram_stt_model, "language": identity.language},
         "voice": {"provider": "deepgram", "voiceId": voice_id(settings.deepgram_tts_model)},
         "serverMessages": ["end-of-call-report"],
+        "endCallPhrases": [CALL_CLOSING],  # hang up once a booking is confirmed, so the call stops being billed
     }
 
 

@@ -69,6 +69,14 @@ def build_system_prompt(profile: DomainProfile, ctx: ConversationContext, tools_
             "- Before an action that changes something (a booking or cancellation), confirm the details with the "
             "caller. Dates passed to tools must be exact, in the format the tool asks for.",
             "- Read results back naturally; never read out technical ids, JSON or field names.",
+            *(
+                [
+                    "- Once a booking is made, confirm it in one or two sentences and do not ask whether they need "
+                    "anything else: the call ends automatically right after."
+                ]
+                if ctx.channel == "phone"
+                else []
+            ),
             "- If a tool fails or returns an error, tell the caller in one short sentence which part of the system is "
             "having trouble (for example the booking system), with no technical details, and ask if they would like "
             "to be connected to a person. If they agree, call request_human.",
