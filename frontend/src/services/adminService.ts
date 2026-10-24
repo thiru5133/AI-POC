@@ -9,6 +9,12 @@ export interface UserQuery {
   offset?: number;
 }
 
+export interface UserChanges {
+  name?: string;
+  email?: string;
+  businessName?: string;
+}
+
 export interface NewBusiness {
   name: string;
   domainId: string;
@@ -49,4 +55,11 @@ export const adminService = {
   },
 
   getUser: (id: string) => apiFetch<UserDetail>(`/api/superadmin/users/${encodeURIComponent(id)}`),
+
+  /** `businessName` renames the user's business. */
+  updateUser: (id: string, changes: UserChanges) =>
+    apiFetch<UserDetail>(`/api/superadmin/users/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify(changes),
+    }),
 };

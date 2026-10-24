@@ -14,6 +14,7 @@ from app.api.schemas import (
     UserDetailOut,
     UserListOut,
     UserSummaryOut,
+    UserUpdate,
 )
 from app.auth.service import AuthService
 from app.models import User
@@ -125,4 +126,16 @@ async def get_user(
     auth: AuthService = Depends(deps.get_auth_service),
 ):
     user, tenant_name = await auth.user_detail(user_id)
+    return UserDetailOut(**_summary(user).model_dump(), tenant_name=tenant_name)
+
+
+@router.patch("/users/{user_id}", response_model=UserDetailOut)
+async def update_user(
+    user_id: str,
+    body: UserUpdate,
+    _: User = Depends(deps.require_superadmin),
+    auth: AuthService = Depends(deps.get_auth_service),
+):
+    """Edits a user's name and email, and renames their business."""
+    user, tenant_name = await auth.update_user(user_id, body.name, body.email, body.business_name)
     return UserDetailOut(**_summary(user).model_dump(), tenant_name=tenant_name)

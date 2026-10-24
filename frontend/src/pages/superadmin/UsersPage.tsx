@@ -175,7 +175,17 @@ export function UsersPage() {
         )}
       </div>
 
-      {selectedId && <UserDetailPanel userId={selectedId} onClose={() => setSelectedId(null)} />}
+      {selectedId && (
+        <UserDetailPanel
+          userId={selectedId}
+          onClose={() => setSelectedId(null)}
+          onSaved={(updated) =>
+            setData((d) =>
+              d && { ...d, items: d.items.map((u) => (u.id === updated.id ? { ...u, name: updated.name, email: updated.email } : u)) }
+            )
+          }
+        />
+      )}
     </>
   );
 }

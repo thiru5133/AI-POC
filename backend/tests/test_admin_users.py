@@ -113,3 +113,53 @@ def test_users_endpoints_are_superadmin_only(client, seeded):
     admin = {"Authorization": f"Bearer {token}"}
     assert client.get("/api/superadmin/users", headers=admin).status_code == 403
     assert client.get("/api/superadmin/users/anything", headers=admin).status_code == 403
+
+
+def _user_id(client, headers, q):
+    return client.get(f"/api/superadmin/users?q={q}", headers=headers).json()["items"][0]["id"]
+
+
+def test_superadmin_edits_user_and_renames_business(client, headers):
+    uid = _user_id(client, headers, "asha")
+    resp = client.patch(
+        f"/api/superadmin/users/{uid}",
+        json={"name": "  Asha  R ", "email": "Asha.New@Example.com", "businessName": "Softsuave"},
+        headers=headers,
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["name"] == "Asha R" and body["email"] == "asha.new@example.com" and body["tenantName"] == "Softsuave"
+    assert client.get(f"/api/superadmin/users/{uid}", headers=headers).json()["tenantName"] == "Softsuave"
+
+
+def test_edit_rejects_duplicate_email_and_unknown_user(client, headers):
+    uid = _user_id(client, headers, "asha")
+    assert client.patch(f"/api/superadmin/users/{uid}", json={"email": "bala@example.com"}, headers=headers).status_code == 409
+    assert client.patch(f"/api/superadmin/users/{uid}", json={"name": "  "}, headers=headers).status_code == 422
+    assert client.patch("/api/superadmin/users/nope", json={"name": "X"}, headers=headers).status_code == 404
+
+
+def test_edit_is_superadmin_only(client, seeded):
+    token = client.post("/api/auth/login", json={"identifier": "asha@example.com", "password": PASSWORD}).json()["accessToken"]
+    assert client.patch("/api/superadmin/users/x", json={"name": "Y"}, headers={"Authorization": f"Bearer {token}"}).status_code == 403
+
+
+def test_renaming_a_business_updates_the_greeting(client, headers, session_factory):
+    from sqlalchemy import select
+
+    from app.models import DomainProfileRow
+
+    uid = _user_id(client, headers, "asha")
+    with session_factory() as session:
+        tenant_id = get_settings().default_tenant_id
+        row = session.scalars(select(DomainProfileRow).where(DomainProfileRow.tenant_id == tenant_id)).first()
+        if row is None:
+            return
+        config = dict(row.config)
+        config["identity"] = {"organizationName": "Demo Tenant", "greeting": "Welcome to Demo Tenant. How can I help?"}
+        row.config = config
+        session.commit()
+    client.patch(f"/api/superadmin/users/{uid}", json={"businessName": "Softsuave hotel"}, headers=headers)
+    with session_factory() as session:
+        row = session.scalars(select(DomainProfileRow).where(DomainProfileRow.tenant_id == tenant_id)).first()
+        assert row.config["identity"]["greeting"] == "Welcome to Softsuave hotel. How can I help?"

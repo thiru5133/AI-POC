@@ -3,7 +3,7 @@ import hmac
 from collections.abc import Callable
 from datetime import timedelta
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -11,7 +11,7 @@ from app.auth import security
 from app.auth.ratelimit import LoginRateLimiter, login_limiter
 from app.core.config import Settings
 from app.core.errors import ConflictError, ForbiddenError, NotFoundError, RateLimitedError, UnauthorizedError
-from app.models import EmailOtp, RefreshToken, Tenant, User
+from app.models import DomainProfileRow, EmailOtp, RefreshToken, Tenant, User
 from app.notifications.email import ConsoleEmailSender, EmailSender, otp_email
 from app.repositories.users import UserRepository
 
@@ -217,7 +217,60 @@ class AuthService:
             tenant = session.get(Tenant, user.tenant_id) if user.tenant_id else None
             return user, (tenant.name if tenant else None)
 
+    def _update_user(
+        self, user_id: str, name: str | None, email: str | None, business_name: str | None
+    ) -> tuple[User, str | None]:
+        with self._sf() as session:
+            repo = UserRepository(session)
+            user = repo.get(user_id)
+            if user is None:
+                raise NotFoundError("User not found")
+            if email is not None:
+                email = normalize_email(email)
+                other = repo.get_by_email(email)
+                if other is not None and other.id != user.id:
+                    raise ConflictError("An account with this email already exists")
+                if email != user.email:
+                    user.email = email
+            if name is not None:
+                user.name = normalize_name(name)
+            tenant = session.get(Tenant, user.tenant_id) if user.tenant_id else None
+            if business_name is not None:
+                if tenant is None:
+                    raise ConflictError("This user has no business to rename")
+                if business_name != tenant.name:
+                    clash = session.scalar(
+                        select(Tenant.id).where(func.lower(Tenant.name) == business_name.lower(), Tenant.id != tenant.id)
+                    )
+                    if clash:
+                        raise ConflictError("A business with this name already exists")
+                    old_name = tenant.name
+                    tenant.name = business_name
+                    # The assistant introduces itself with the profile's name (and a greeting that spells it out),
+                    # so keep both in step.
+                    for profile in session.scalars(select(DomainProfileRow).where(DomainProfileRow.tenant_id == tenant.id)):
+                        profile.name = business_name
+                        config = dict(profile.config)
+                        identity = {
+                            key: value.replace(old_name, business_name) if isinstance(value, str) else value
+                            for key, value in config.get("identity", {}).items()
+                        }
+                        identity["organizationName"] = business_name
+                        config["identity"] = identity
+                        profile.config = config
+            try:
+                session.commit()
+            except IntegrityError:
+                session.rollback()
+                raise ConflictError("An account with this email already exists") from None
+            return user, (tenant.name if tenant else None)
+
     # ---- async API ----
+    async def update_user(
+        self, user_id: str, name: str | None, email: str | None, business_name: str | None
+    ) -> tuple[User, str | None]:
+        return await asyncio.to_thread(self._update_user, user_id, name, email, business_name)
+
     async def register(self, name: str, email: str, password: str) -> User:
         return await asyncio.to_thread(self._register, name, email, password)
 

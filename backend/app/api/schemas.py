@@ -214,6 +214,24 @@ class UserDetailOut(UserSummaryOut):
     tenant_name: str | None = None
 
 
+class UserUpdate(CamelModel):
+    """Superadmin edit of a user. Omitted fields are left alone; business_name renames the user's business."""
+
+    name: str | None = Field(default=None, max_length=200)
+    email: EmailStr | None = None
+    business_name: str | None = Field(default=None, max_length=200)
+
+    @field_validator("name", "business_name")
+    @classmethod
+    def _not_blank(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = " ".join(value.split())
+        if not value:
+            raise ValueError("This field cannot be empty")
+        return value
+
+
 # ---- MCP integrations ----
 def _clean_name(value: str) -> str:
     value = " ".join(value.split())
