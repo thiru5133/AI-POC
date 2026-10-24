@@ -84,3 +84,14 @@ def test_trial_accounts_get_a_heads_up(capsys):
 
 def test_number_must_have_a_country_code(capsys):
     assert phone_setup.run(["--number", "4155550100"], settings(), twilio_http()[0]) == 2
+
+
+def test_the_sms_sender_must_belong_to_the_twilio_account(capsys):
+    assert run(twilio_http(voice_url=URL + "/api/phone/incoming", owns_number=False)[0], twilio_sms_from="+17372508034") == 1
+    assert "TWILIO_SMS_FROM +17372508034 is not a number on this Twilio account" in capsys.readouterr().out
+    http, _ = twilio_http(voice_url=URL + "/api/phone/incoming")
+    assert run(http, twilio_sms_from="+17372508034") == 0
+    assert "can send texts" in capsys.readouterr().out
+    http, _ = twilio_http(voice_url=URL + "/api/phone/incoming")
+    assert run(http, twilio_sms_from="+") == 0  # no sender configured: nothing to check
+    assert "TWILIO_SMS_FROM" not in capsys.readouterr().out

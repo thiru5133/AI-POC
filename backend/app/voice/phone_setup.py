@@ -73,6 +73,22 @@ def check_twilio(s: Settings, http: httpx.Client, number: str, apply: bool) -> l
     return results + [(ok, f"{number} now sends calls to {expected}" if ok else f"Twilio would not update the number ({update.status_code})")]
 
 
+def check_sms_sender(s: Settings, http: httpx.Client) -> Result | None:
+    """Alerts and confirmations are texted from TWILIO_SMS_FROM, which must be a number on this Twilio account.
+    None when no sender is set (texts are then only logged)."""
+    sender = normalize_phone(s.twilio_sms_from)
+    if sender is None:
+        return None
+    auth = (s.twilio_account_sid, s.twilio_auth_token)
+    found = http.get(f"{TWILIO}/Accounts/{s.twilio_account_sid}/IncomingPhoneNumbers.json", params={"PhoneNumber": sender}, auth=auth)
+    numbers = found.json().get("incoming_phone_numbers", []) if found.status_code == 200 else []
+    if not numbers:
+        return False, f"TWILIO_SMS_FROM {sender} is not a number on this Twilio account: texts to the business (and callers) will fail"
+    if not numbers[0].get("capabilities", {}).get("sms", True):
+        return False, f"TWILIO_SMS_FROM {sender} cannot send SMS"
+    return True, f"TWILIO_SMS_FROM {sender} can send texts"
+
+
 def check_business(number: str) -> Result:
     """Whether a business has saved this number on the Phone page (otherwise callers hear 'not in service')."""
     from app.database.session import get_session_factory
@@ -104,6 +120,9 @@ def run(argv: list[str] | None = None, settings: Settings | None = None, http: h
     if all(ok for ok, _ in results[:2]):
         results.append(check_server_reachable(s, client))
         results += check_twilio(s, client, number, args.apply)
+        sender = check_sms_sender(s, client)
+        if sender is not None:
+            results.append(sender)
     if not args.skip_business:
         results.append(check_business(number))
     for ok, message in results:
