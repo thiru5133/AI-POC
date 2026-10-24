@@ -203,7 +203,12 @@ class ConversationService:
             reason += f" Caller state: {ctx.urgency}."
         task = asyncio.create_task(
             asyncio.to_thread(
-                self._alerts.send, tenant_id, state.profile.identity.organization_name, reason, ctx.caller.phone
+                self._alerts.send,
+                tenant_id,
+                state.profile.identity.organization_name,
+                reason,
+                ctx.caller.phone,
+                ctx.session_id,
             )
         )
         self._tasks.add(task)  # keep a reference until it finishes

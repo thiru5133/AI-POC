@@ -155,3 +155,29 @@ async def test_the_openai_client_does_not_wait_out_a_rate_limit():
     with pytest.raises(LLMBusyError):
         async for _ in provider.stream("system", [{"role": "user", "content": "hi"}], []):
             pass
+
+
+# ---------- what the admin is told, and what happens when nothing arrives ----------
+def test_the_email_has_the_callers_number_the_time_and_a_link(session_factory, staff, caplog):
+    email = RecordingEmailSender()
+    alerts = StaffAlerts(session_factory, RecordingSms(), email, "https://app.example.com/")
+    assert alerts.send(TENANT, "Demo Hotel", "The booking system is down.", "+919000011122", "conv-1", "Booking problem") is True
+    (to, subject, body), = email.sent
+    assert to == "owner@example.com" and subject == "Booking problem"
+    assert "+919000011122" in body and "UTC" in body and "https://app.example.com/conversations/conv-1" in body
+
+
+def test_one_working_channel_is_enough(session_factory, staff, caplog):
+    alerts = StaffAlerts(session_factory, RecordingSms(fail=True), RecordingEmailSender())
+    with caplog.at_level("ERROR"):
+        assert alerts.send(TENANT, "Demo Hotel", "r", None) is True
+    assert "NOT delivered" not in caplog.text
+
+
+def test_when_nothing_arrives_it_is_logged_as_an_error(session_factory, staff, caplog):
+    email = RecordingEmailSender()
+    email.fail = True
+    alerts = StaffAlerts(session_factory, RecordingSms(fail=True), email)
+    with caplog.at_level("ERROR"):
+        assert alerts.send(TENANT, "Demo Hotel", "r", "+919000011122") is False
+    assert "NOT delivered" in caplog.text
