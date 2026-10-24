@@ -191,9 +191,16 @@ class ConversationService:
     def _needs_ping(self, state: TurnState) -> bool:
         """Whether this turn is the first to need a person: the business's people are pinged once per conversation."""
         ctx = state.ctx
-        if self._alerts is None or not (ctx.handoff_requested or ctx.alert_reason) or ctx.staff_alerted:
+        if self._alerts is None or not (ctx.handoff_requested or ctx.alert_reason):
             return False
+        if ctx.staff_alerted:
+            # An earlier, milder alert must not swallow an emergency: that one is sent again, once.
+            if ctx.urgency != "emergency" or ctx.emergency_alerted:
+                return False
+            ctx.emergency_alerted = True
+            return True
         ctx.staff_alerted = True
+        ctx.emergency_alerted = ctx.urgency == "emergency"
         return True
 
     def _ping_staff(self, tenant_id: str, state: TurnState) -> None:
@@ -214,6 +221,40 @@ class ConversationService:
         )
         self._tasks.add(task)  # keep a reference until it finishes
         task.add_done_callback(self._tasks.discard)
+
+    def _claim_call_alert(self, tenant_id: str, call_id: str | None) -> tuple[bool, str | None, str]:
+        """(should alert, conversation id, business name) for a call that ended badly. A call already alerted about
+        during the conversation is not alerted again; the conversation is marked so a repeated report is ignored too."""
+        with self._sf() as session:
+            repo = ConversationRepository(session, tenant_id)
+            recent = session.scalars(repo._select().order_by(Conversation.started_at.desc()).limit(20))
+            conv = next((c for c in recent if call_id and (c.context or {}).get("call_id") == call_id), None)
+            profile_row = DomainProfileRepository(session, tenant_id).get_active()
+            org = parse_profile(profile_row.config).identity.organization_name if profile_row else "your business"
+            if conv is None:
+                return True, None, org
+            if (conv.context or {}).get("staff_alerted"):
+                return False, conv.id, org
+            conv.context = {**(conv.context or {}), "staff_alerted": True}
+            session.commit()
+            return True, conv.id, org
+
+    async def alert_call_ended(self, tenant_id: str, call_id: str | None, caller_phone: str | None, how: str) -> None:
+        """A phone call ended because of an error or a dropped line: tell the business so it can call the person back."""
+        if self._alerts is None:
+            return
+        should, conversation_id, org = await asyncio.to_thread(self._claim_call_alert, tenant_id, call_id)
+        if not should:
+            return
+        await asyncio.to_thread(
+            self._alerts.send,
+            tenant_id,
+            org,
+            f"The call ended unexpectedly ({how}).",
+            caller_phone,
+            conversation_id,
+            f"A call at {org} dropped",
+        )
 
     async def update_context(self, tenant_id: str, conversation_id: str, fields: dict[str, Any]) -> None:
         """Merges `fields` into a conversation's saved context (how a call's channel and caller are recorded)."""

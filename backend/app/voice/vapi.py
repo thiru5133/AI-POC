@@ -61,6 +61,13 @@ def call_numbers(message: dict[str, Any]) -> tuple[str | None, str | None, str |
     return dialled, caller, call.get("id")
 
 
+def is_error_ending(reason: str | None) -> bool:
+    """Whether Vapi ended the call because something broke (not because someone hung up or the caller went silent):
+    reasons such as `pipeline-error-openai-llm-failed` or `assistant-request-returned-error`."""
+    reason = (reason or "").lower()
+    return "error" in reason or "failed" in reason
+
+
 def voice_id(tts_model: str) -> str:
     """Deepgram's Vapi voice id from a model name: 'aura-asteria-en' -> 'asteria'."""
     parts = tts_model.split("-")

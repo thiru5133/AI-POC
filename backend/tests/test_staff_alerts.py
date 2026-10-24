@@ -238,3 +238,17 @@ async def test_a_failed_booking_tool_tells_the_business_but_does_not_transfer(se
 async def test_a_working_tool_alerts_nobody(session_factory, staff):
     _, _, sms, email = await _book(session_factory, fail=False)
     assert sms.sent == [] and email.sent == []
+
+
+async def test_an_emergency_after_an_earlier_alert_is_sent_again_once(session_factory, staff):
+    from app.conversation.service import TurnState
+
+    service, sms, _ = build(session_factory, BrokenThenFine())
+    conv_id = await call(service)
+    state = await asyncio.to_thread(service._load, TENANT, conv_id)
+    state.ctx.handoff_requested = True
+    assert service._needs_ping(state) is True  # the first alert
+    assert service._needs_ping(state) is False  # not repeated for the same reason
+    state.ctx.urgency = "emergency"
+    assert service._needs_ping(state) is True  # but an emergency is never swallowed
+    assert service._needs_ping(state) is False

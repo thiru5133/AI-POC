@@ -43,6 +43,7 @@ class ConversationContext(BaseModel):
     business_phone: str | None = None
     pending_offer: str | None = None  # a system problem we offered a person for; waiting for the caller's yes or no
     staff_alerted: bool = False  # the business's people were pinged about this conversation (once)
+    emergency_alerted: bool = False  # ...and told again if it turned into an emergency afterwards
     notifications_sent: int = 0  # confirmations sent in this conversation (capped, see tools/builtin.py)
     notify_target: str | None = None  # the one phone number / email address those went to
 

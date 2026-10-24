@@ -165,3 +165,57 @@ def test_the_number_is_not_saved_with_the_conversation(client, configured, sessi
     cid = vapi.read_llm_token(vapi_settings(), assistant["model"]["url"].rsplit("/", 1)[1])["cid"]
     with session_factory() as session:
         assert "business_phone" not in session.get(Conversation, cid).context
+
+
+# ---------- a call that dies on an error is reported to the business ----------
+@pytest.fixture
+def alerted(client, session_factory, configured):
+    from app.ai.base import LLMProvider
+    from app.api import deps
+    from app.conversation.engine import ConversationEngine
+    from app.conversation.service import ConversationService
+    from app.notifications.staff import StaffAlerts
+
+    from .conftest import RecordingEmailSender
+    from .test_staff_alerts import RecordingSms
+
+    class Silent(LLMProvider):
+        async def stream(self, system, messages, tools):
+            return
+            yield  # pragma: no cover
+
+    sms, email = RecordingSms(), RecordingEmailSender()
+    service = ConversationService(session_factory, ConversationEngine(Silent()), StaffAlerts(session_factory, sms, email, BASE))
+    app.dependency_overrides[deps.get_service] = lambda: service
+    yield sms, email
+    app.dependency_overrides.pop(deps.get_service, None)
+
+
+def ended(reason, dialled=DIALLED, call_id="call-1"):
+    body = incoming(dialled, call_id, kind="end-of-call-report")
+    body["message"]["endedReason"] = reason
+    return body
+
+
+def test_error_endings_are_told_apart_from_normal_ones():
+    assert vapi.is_error_ending("pipeline-error-openai-llm-failed")
+    assert vapi.is_error_ending("assistant-request-returned-error")
+    assert not any(vapi.is_error_ending(r) for r in ("customer-ended-call", "assistant-ended-call", "silence-timed-out", None))
+
+
+def test_a_call_that_ended_on_an_error_alerts_the_business_once(client, session_factory, alerted):
+    sms, email = alerted
+    business(session_factory, client)
+    assert client.post("/api/vapi/webhook", json=incoming(), headers=AUTH).status_code == 200  # the call starts
+    for _ in range(2):  # Vapi may repeat a report
+        assert client.post("/api/vapi/webhook", json=ended("pipeline-error-openai-llm-failed"), headers=AUTH).status_code == 200
+    assert len(sms.sent) == 1 and CALLER in sms.sent[0][1] and "pipeline-error" in sms.sent[0][1]
+    assert email.sent[0][1].startswith("A call at FitZone Anna Nagar dropped")
+
+
+def test_a_normal_ending_or_an_unknown_number_alerts_nobody(client, session_factory, alerted):
+    sms, email = alerted
+    business(session_factory, client)
+    client.post("/api/vapi/webhook", json=ended("customer-ended-call"), headers=AUTH)
+    client.post("/api/vapi/webhook", json=ended("pipeline-error-x", dialled="+14155550100"), headers=AUTH)
+    assert sms.sent == [] and email.sent == []

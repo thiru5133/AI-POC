@@ -40,11 +40,18 @@ async def webhook(
         raise ForbiddenError("Invalid Vapi credential")
 
     message = (await request.json()).get("message") or {}
-    if message.get("type") != "assistant-request":
+    kind = message.get("type")
+    if kind not in ("assistant-request", "end-of-call-report"):
         return {}
 
     dialled_raw, caller_raw, call_id = vapi.call_numbers(message)
     dialled = phone.normalize_phone(dialled_raw)
+
+    if kind == "end-of-call-report":
+        ended = message.get("endedReason")
+        if vapi.is_error_ending(ended):
+            await _alert_dropped_call(sessions, service, dialled, phone.normalize_phone(caller_raw), call_id, str(ended))
+        return {}
 
     def lookup():
         with sessions() as session:
@@ -66,6 +73,22 @@ async def webhook(
     token = vapi.create_llm_token(settings, tenant_id, conversation_id)
     llm_url = f"{settings.public_base_url.rstrip('/')}{LLM_PATH}/{token}"
     return {"assistant": vapi.assistant_config(settings, profile, llm_url)}
+
+
+async def _alert_dropped_call(sessions, service: ConversationService, dialled, caller, call_id, ended: str) -> None:
+    def lookup():
+        with sessions() as session:
+            found = business_for_number(session, dialled) if dialled else None
+            return found[0].id if found else None
+
+    tenant_id = await asyncio.to_thread(lookup)
+    if tenant_id is None:
+        log.warning("a call to a number that is not in service ended with %s", ended)
+        return
+    try:
+        await service.alert_call_ended(tenant_id, call_id, caller, ended)
+    except Exception:
+        log.exception("could not alert the business about a dropped call", extra={"tenant_id": tenant_id})
 
 
 @router.post(LLM_PATH + "/{token}/chat/completions")
