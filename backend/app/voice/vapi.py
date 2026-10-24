@@ -68,6 +68,11 @@ def is_error_ending(reason: str | None) -> bool:
     return "error" in reason or "failed" in reason
 
 
+def is_silence_ending(reason: str | None) -> bool:
+    """The caller (or the assistant, stuck) went quiet and Vapi hung up: worth a call back if nothing was resolved."""
+    return "silence" in (reason or "").lower()
+
+
 def voice_id(tts_model: str) -> str:
     """Deepgram's Vapi voice id from a model name: 'aura-asteria-en' -> 'asteria'."""
     parts = tts_model.split("-")
@@ -79,7 +84,7 @@ def assistant_config(settings: Settings, profile: DomainProfile, llm_url: str) -
     return {
         "name": identity.organization_name[:40],
         "firstMessage": identity.greeting,
-        "model": {"provider": "custom-llm", "url": llm_url, "model": MODEL_NAME},
+        "model": {"provider": "custom-llm", "url": llm_url, "model": MODEL_NAME, "tools": [{"type": "endCall"}]},
         "transcriber": {"provider": "deepgram", "model": settings.deepgram_stt_model, "language": identity.language},
         "voice": {"provider": "deepgram", "voiceId": voice_id(settings.deepgram_tts_model)},
         "serverMessages": ["end-of-call-report"],
@@ -110,6 +115,20 @@ def sse_chunk(text: str | None = None, finish: bool = False, completion_id: str 
         "choices": [{"index": 0, "delta": delta, "finish_reason": "stop" if finish else None}],
     }
     return f"data: {json.dumps(chunk)}\n\n"
+
+
+def sse_end_call_chunk(completion_id: str = "chatcmpl-receptionist") -> str:
+    """Asks Vapi to hang up (its built-in endCall tool), sent after the goodbye has been streamed. The closing phrase in
+    `endCallPhrases` is a second, independent way to the same end."""
+    call = {"index": 0, "id": "call_end", "type": "function", "function": {"name": "endCall", "arguments": "{}"}}
+    chunk = {
+        "id": completion_id,
+        "object": "chat.completion.chunk",
+        "created": int(time.time()),
+        "model": MODEL_NAME,
+        "choices": [{"index": 0, "delta": {"role": "assistant", "tool_calls": [call]}, "finish_reason": "tool_calls"}],
+    }
+    return "data: " + json.dumps(chunk) + "\n\n"
 
 
 SSE_DONE = "data: [DONE]\n\n"

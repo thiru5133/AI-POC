@@ -21,7 +21,7 @@ from app.core.errors import ForbiddenError, UnauthorizedError
 from app.database.session import get_session_factory
 from app.models import User
 from app.notifications.email import EmailSender, create_email_sender
-from app.notifications.messaging import create_message_senders
+from app.notifications.messaging import create_alert_sms_sender, create_message_senders
 from app.notifications.staff import StaffAlerts
 from app.tenants.service import BusinessService
 from app.tools.builtin import builtin_tools
@@ -92,7 +92,7 @@ def get_service(
 ) -> ConversationService:
     mcp = McpToolSource(sessions, settings, mcp_client, _mcp_tool_cache, _mcp_result_cache)
     email = create_email_sender(settings)
-    alerts = StaffAlerts(sessions, create_message_senders(settings, email)["sms"], email, settings.app_base_url)
+    alerts = StaffAlerts(sessions, create_alert_sms_sender(settings), email, settings.app_base_url)
     return ConversationService(sessions, ConversationEngine(llm, tools, mcp=mcp, confirmation_channel=settings.booking_confirmation_channel), alerts)
 
 

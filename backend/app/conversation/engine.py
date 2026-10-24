@@ -1,4 +1,5 @@
 import json
+import logging
 import re
 from collections.abc import AsyncIterator
 from typing import Any
@@ -11,12 +12,38 @@ from app.domain.profile import DomainProfile
 from app.mcp.tools import McpToolSource
 from app.tools.registry import ToolRegistry
 
+log = logging.getLogger(__name__)
+
 MAX_TOOL_RESULT_CHARS = 3500  # keeps the follow-up model call small enough for per-minute token limits
 
 
-CONFIRMATION_NOTE = (
-    "A confirmation text was already sent to the caller's phone. Do not send another to that number; "
-    "tell them it is on its way."
+# Said instead of doing: a reply that promises to look something up without calling the tool leaves the caller waiting
+# on silence, and the next turn tends to invent a "system problem".
+_STALLING = re.compile(
+    r"\b(?:moment|second|sec|hold on|hold the line|bear with me|please wait|one sec)\b"
+    r"|\b(?:let me|let's|allow me to|i'll|i will|i'm going to|i am going to|i need to|i'll need to|i will need to"
+    r"|i have to|i'll have to|going to|about to)\s+(?:\w+\s+){0,2}?"
+    r"(?:check|look|see|find|pull|search|verify|get|fetch|do that|do this|book|reserve|proceed|process|make)\b"
+    r"|\bcheck(?:ing)?\s+(?:that|this|it|on)\b|\blooking (?:that |this )?up\b",
+    re.IGNORECASE,
+)
+NUDGE = (
+    "You said you would look something up but did not call a tool. Call the right tool now with what the caller "
+    "has told you, then answer from its result. If a detail is missing, ask the caller for it instead."
+)
+
+ALREADY_BOOKED_NOTE = (
+    "This exact booking was already made earlier in this call. Do not book again: tell the caller it is already confirmed."
+)
+SAID_GOODBYE = re.compile(r"goodbye\W*$", re.IGNORECASE)
+
+NOT_SENT_NOTE = (
+    "The confirmation text to the caller's phone could NOT be delivered. Do not say a text was sent; give the caller "
+    "the reference aloud instead."
+)
+_SENT_NOTE = (
+    "A confirmation was already sent {where}. Do not send another there; tell the caller it is on its way "
+    "(say exactly how it was sent: {how})."
 )
 
 
@@ -29,8 +56,8 @@ def booking_confirmation_text(profile: DomainProfile, booking: dict[str, Any]) -
     data = booking.get("result") if isinstance(booking.get("result"), dict) else booking
     required = profile.booking_workflow.required_fields
     dates = [k for k, v in data.items() if isinstance(v, str) and _ISO_DATE.match(v)]
-    named = [k for k in data if k.endswith("_name") and k not in required]
-    keys = list(dict.fromkeys([*named, *dates, *required]))
+    named = [k for k in data if k.endswith(("_name", "_city", "_number")) and k not in required]
+    keys = list(dict.fromkeys([*named, *dates, *required, *(k for k in ("nights",) if k in data)]))
     details = [
         f"{key.replace('_', ' ')} {data[key]}"
         for key in keys
@@ -68,19 +95,29 @@ class ConversationEngine:
         self.mcp = mcp
         self.max_tool_rounds = max_tool_rounds
 
-    async def _confirm_by_text(self, profile: DomainProfile, ctx: ConversationContext, booking: dict[str, Any]) -> bool:
+    def _wants_text(self, profile: DomainProfile, ctx: ConversationContext) -> bool:
+        return bool(
+            self.confirmation_channel and ctx.channel == "phone" and ctx.caller.phone and "send_confirmation" in profile.enabled_tools
+        )
+
+    async def _confirm_by_text(
+        self, profile: DomainProfile, ctx: ConversationContext, booking: dict[str, Any]
+    ) -> tuple[str, str] | None:
         """Texts the caller's own number once a booking is made, so confirmation never depends on the assistant
         remembering to. Only on phone calls (the caller ID is known), once per conversation."""
         channel = self.confirmation_channel
         if not (channel and ctx.channel == "phone" and ctx.caller.phone and "send_confirmation" in profile.enabled_tools):
-            return False
+            return None
         if ctx.notifications_sent or ctx.notify_target:
-            return False
+            return None
         message = booking_confirmation_text(profile, booking)
         sent, is_error = await self.tools.execute(
             "send_confirmation", ctx, {"channel": channel, "to": ctx.caller.phone, "message": message}
         )
-        return not is_error and bool(sent.get("sent"))
+        if not is_error and sent.get("sent"):
+            return "to the caller's phone", f"by {'WhatsApp' if channel == 'whatsapp' else 'text message'}"
+        log.warning("booking confirmation text could not be delivered", extra={"tenant_id": ctx.tenant_id, "to": ctx.caller.phone})
+        return None
 
     async def run_turn(
         self,
@@ -97,6 +134,9 @@ class ConversationEngine:
         messages = [*history, {"role": "user", "content": user_text}]
 
         booked = False
+        used_tool = False
+        nudged = False
+        was_handoff = ctx.handoff_requested
         for _ in range(self.max_tool_rounds + 1):
             text_parts: list[str] = []
             calls = []
@@ -106,10 +146,30 @@ class ConversationEngine:
                     yield event.text
                 else:
                     calls.append(event)
+            if (
+                not calls
+                and tool_defs
+                and not used_tool
+                and not nudged
+                and _STALLING.search("".join(text_parts))
+                and not "".join(text_parts).rstrip().endswith("?")
+            ):
+                nudged = True  # promised a look-up, called nothing: make it do what it said (once per turn)
+                messages.append({"role": "assistant", "content": "".join(text_parts)})
+                messages.append({"role": "user", "content": NUDGE})
+                continue
             if not calls:
-                # A booked call is finished: say goodbye so the line is dropped, unless the assistant is still
-                # waiting for an answer from the caller.
-                if booked and ctx.channel == "phone" and not "".join(text_parts).rstrip().endswith("?"):
+                # A call is finished once a booking is made, or once a person has been promised who will call back
+                # (nobody can take it live): say goodbye so the line is dropped instead of left open and billed.
+                # Not while the assistant waits for an answer, and never on an emergency.
+                call_back = ctx.handoff_requested and not was_handoff and not ctx.transfer_available
+                if (
+                    (booked or call_back)
+                    and ctx.channel == "phone"
+                    and ctx.urgency != "emergency"
+                    and not "".join(text_parts).rstrip().endswith("?")
+                    and not SAID_GOODBYE.search("".join(text_parts).strip())  # it already said it itself
+                ):
                     yield f" {CALL_CLOSING}"
                 return
 
@@ -129,7 +189,20 @@ class ConversationEngine:
             messages.append({"role": "assistant", "content": blocks})
 
             results = []
+            used_tool = True
             for call in calls:
+                signature = f"{call.tool_name}:{json.dumps(call.tool_input, sort_keys=True)}"
+                if usage.is_booking_tool(call.tool_name) and signature in ctx.booked_calls:
+                    # "Book it" said twice (or a repeated request) must not make a second booking.
+                    results.append(
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": call.tool_id,
+                            "content": json.dumps({"note": ALREADY_BOOKED_NOTE}),
+                            "is_error": False,
+                        }
+                    )
+                    continue
                 if mcp_tools and mcp_tools.owns(call.tool_name):
                     output, is_error = await mcp_tools.execute(call.tool_name, call.tool_input)
                 else:
@@ -143,8 +216,12 @@ class ConversationEngine:
                     if usage.is_booking_tool(call.tool_name):
                         ctx.record_usage(usage.BOOKING)
                         booked = True
-                        if await self._confirm_by_text(profile, ctx, output):
-                            output = {**output, "note": CONFIRMATION_NOTE}
+                        ctx.booked_calls.append(signature)
+                        sent_how = await self._confirm_by_text(profile, ctx, output)
+                        if sent_how:
+                            output = {**output, "note": _SENT_NOTE.format(where=sent_how[0], how=sent_how[1])}
+                        elif self._wants_text(profile, ctx):
+                            output = {**output, "note": NOT_SENT_NOTE}
                 results.append(
                     {
                         "type": "tool_result",

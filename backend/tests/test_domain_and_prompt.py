@@ -46,3 +46,15 @@ def test_engine_code_has_no_hotel_terminology():
             text = path.read_text(encoding="utf-8").lower()
             for word in banned:
                 assert word not in text, f"{word!r} found in {path.name}"
+
+
+def test_the_assistant_is_told_not_to_blame_the_system_for_unclear_speech():
+    from app.conversation.context import ConversationContext
+    from app.conversation.prompt import build_system_prompt
+    from app.domain.loader import load_profile_file, parse_profile
+
+    profile = parse_profile(load_profile_file("hotel"))
+    ctx = ConversationContext(session_id="s", tenant_id="t", domain_profile_id="p", channel="phone")
+    prompt = build_system_prompt(profile, ctx, tools_available=True)
+    assert "Only say there is a problem with the system when a tool has just returned an error" in prompt
+    assert "ask them politely to repeat" in prompt

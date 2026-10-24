@@ -8,7 +8,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.ai.base import LLMBusyError
-from app.conversation.context import ConversationContext
+from app.conversation.context import CALL_CLOSING, ConversationContext
 from app.conversation.engine import ConversationEngine
 from app.core.errors import NotFoundError
 from app.domain.loader import parse_profile
@@ -175,7 +175,10 @@ class ConversationService:
             if accepts_offer(user_text):
                 ctx.handoff_requested = True
                 ctx.handoff_reason = f"The caller accepted a person after a system problem ({issue})."[:200]
-                yield ACCEPTED_TRANSFER if ctx.transfer_available else ACCEPTED_CALLBACK
+                if ctx.transfer_available:
+                    yield ACCEPTED_TRANSFER
+                else:  # nobody can take it live: the business calls back, so the call can end
+                    yield ACCEPTED_CALLBACK + (f" {CALL_CLOSING}" if ctx.channel == "phone" else "")
                 return
         try:
             async for delta in self.engine.run_turn(state.profile, ctx, state.history, user_text):
@@ -222,15 +225,24 @@ class ConversationService:
         self._tasks.add(task)  # keep a reference until it finishes
         task.add_done_callback(self._tasks.discard)
 
-    def _claim_call_alert(self, tenant_id: str, call_id: str | None) -> tuple[bool, str | None, str]:
+    def _claim_call_alert(
+        self, tenant_id: str, call_id: str | None, unresolved_only: bool
+    ) -> tuple[bool, str | None, str]:
         """(should alert, conversation id, business name) for a call that ended badly. A call already alerted about
-        during the conversation is not alerted again; the conversation is marked so a repeated report is ignored too."""
+        during the conversation is not alerted again; the conversation is marked so a repeated report is ignored too.
+        `unresolved_only` (a caller who went quiet): only when they had said something and nothing was booked or handed
+        to a person, otherwise the call needs no follow-up."""
         with self._sf() as session:
             repo = ConversationRepository(session, tenant_id)
             recent = session.scalars(repo._select().order_by(Conversation.started_at.desc()).limit(20))
             conv = next((c for c in recent if call_id and (c.context or {}).get("call_id") == call_id), None)
             profile_row = DomainProfileRepository(session, tenant_id).get_active()
             org = parse_profile(profile_row.config).identity.organization_name if profile_row else "your business"
+            if unresolved_only:
+                ctx = (conv.context or {}) if conv else {}
+                spoke = conv is not None and any(m.role == "user" for m in repo.messages(conv.id))
+                if not spoke or ctx.get("booked_calls") or ctx.get("handoff_requested"):
+                    return False, conv.id if conv else None, org
             if conv is None:
                 return True, None, org
             if (conv.context or {}).get("staff_alerted"):
@@ -239,11 +251,13 @@ class ConversationService:
             session.commit()
             return True, conv.id, org
 
-    async def alert_call_ended(self, tenant_id: str, call_id: str | None, caller_phone: str | None, how: str) -> None:
+    async def alert_call_ended(
+        self, tenant_id: str, call_id: str | None, caller_phone: str | None, how: str, unresolved_only: bool = False
+    ) -> None:
         """A phone call ended because of an error or a dropped line: tell the business so it can call the person back."""
         if self._alerts is None:
             return
-        should, conversation_id, org = await asyncio.to_thread(self._claim_call_alert, tenant_id, call_id)
+        should, conversation_id, org = await asyncio.to_thread(self._claim_call_alert, tenant_id, call_id, unresolved_only)
         if not should:
             return
         await asyncio.to_thread(

@@ -240,3 +240,192 @@ async def test_no_text_when_off_on_chat_without_caller_id_or_without_the_tool():
     for kwargs in ({"channel_setting": ""}, {"channel_setting": "sms", "ctx_channel": "web"}, {"channel_setting": "sms", "caller": None}, {"channel_setting": "sms", "enabled": False}):
         _, sms, wa = await _booked_call(**kwargs)
         assert sms.sent == [] and wa.sent == []
+
+
+# ---------- no double booking, and an email when the text cannot be delivered ----------
+async def _book_twice(sms_fails):
+    from app.core.errors import UpstreamError
+    from app.notifications.messaging import MessageSender
+
+    class Rec(MessageSender):
+        def __init__(self, fail=False):
+            self.sent, self.fail = [], fail
+
+        def send(self, to, body):
+            if self.fail:
+                raise UpstreamError("trial")
+            self.sent.append((to, body))
+
+    sms, email = Rec(sms_fails), Rec()
+    made = []
+
+    async def book(c, args):
+        made.append(args)
+        return {"reference": "HB-1", "hotel_name": "Holiday Colombo", "guest_email": "guest@example.com", "total_price": 200}
+
+    class Twice(LLMProvider):
+        def __init__(self):
+            self.round = 0
+
+        async def stream(self, system, messages, tools):
+            self.round += 1
+            if self.round in (1, 3):
+                yield LLMEvent(type="tool_use", tool_id=f"t{self.round}", tool_name="hotel__book_room", tool_input={"a": 1})
+            else:
+                yield LLMEvent(type="text", text="Booked.")
+
+    registry = ToolRegistry([*builtin_tools({"sms": sms, "whatsapp": Rec(), "email": email}), Tool("hotel__book_room", "d", {"type": "object", "properties": {}}, book)])
+    profile = parse_profile({**load_profile_file("hotel"), "enabledTools": ["hotel__book_room", "send_confirmation"]})
+    c = ctx()
+    c.channel, c.caller.phone = "phone", "+919000011122"
+    engine = ConversationEngine(Twice(), registry, confirmation_channel="sms")
+    for _ in range(2):  # the same request twice, as when a caller says "book it" again
+        _ = [x async for x in engine.run_turn(profile, c, [], "book it")]
+        engine.llm.round = 0  # a fresh answer sequence for the next request
+    return made, sms, email
+
+
+async def test_the_same_booking_is_not_made_twice():
+    made, _, _ = await _book_twice(sms_fails=False)
+    assert len(made) == 1
+
+
+async def test_when_the_text_fails_no_email_is_sent_instead():
+    _, sms, email = await _book_twice(sms_fails=True)
+    assert email.sent == [] and sms.sent == []  # the caller asked for a text, so nothing else is sent in its place
+
+
+def test_the_vapi_assistant_has_an_end_call_tool_and_the_stream_can_hang_up():
+    import json as _json
+
+    from app.core.config import get_settings
+    from app.voice import vapi
+
+    profile = parse_profile(load_profile_file("hotel"))
+    assert vapi.assistant_config(get_settings(), profile, "https://x/llm")["model"]["tools"] == [{"type": "endCall"}]
+    chunk = _json.loads(vapi.sse_end_call_chunk()[6:])
+    call = chunk["choices"][0]["delta"]["tool_calls"][0]
+    assert call["function"]["name"] == "endCall" and chunk["choices"][0]["finish_reason"] == "tool_calls"
+
+
+# ---------- a promised look-up must actually happen ----------
+class _Stalls(LLMProvider):
+    """Promises to check, calls nothing; only after being told to does it call the tool and answer."""
+
+    def __init__(self, stalls=True):
+        self.stalls, self.round, self.nudged = stalls, 0, False
+
+    async def stream(self, system, messages, tools):
+        self.round += 1
+        if any(isinstance(m["content"], str) and m["content"].startswith("You said you would look") for m in messages):
+            self.nudged = True
+        called = any(isinstance(m["content"], list) and any(b.get("type") == "tool_result" for b in m["content"]) for m in messages)
+        if called:
+            yield LLMEvent(type="text", text=" We have a standard option at 210 dollars.")
+        elif self.nudged:
+            yield LLMEvent(type="tool_use", tool_id="t1", tool_name="hotel__search_rooms", tool_input={})
+        elif self.stalls:
+            yield LLMEvent(type="text", text="Got it. I'll check the availability for you. One moment, please.")
+        else:
+            yield LLMEvent(type="text", text="Which date would you like?")
+
+
+async def _stalled(stalls, tools=True):
+    seen = []
+
+    async def search(c, args):
+        seen.append(args)
+        return {"options": 1}
+
+    registry = ToolRegistry([Tool("hotel__search_rooms", "d", {"type": "object", "properties": {}}, search)] if tools else [])
+    profile = parse_profile({**load_profile_file("hotel"), "enabledTools": ["hotel__search_rooms"] if tools else []})
+    c = ctx()
+    llm = _Stalls(stalls)
+    text = "".join([x async for x in ConversationEngine(llm, registry).run_turn(profile, c, [], "two guests")])
+    return text, seen
+
+
+async def test_a_promise_to_check_without_a_tool_call_is_followed_up():
+    text, seen = await _stalled(stalls=True)
+    assert len(seen) == 1 and text.startswith("Got it.") and text.endswith("210 dollars.")
+
+
+async def test_no_nudge_when_nothing_was_promised_or_no_tools_exist():
+    text, seen = await _stalled(stalls=False)
+    assert seen == [] and text == "Which date would you like?"
+    text, seen = await _stalled(stalls=True, tools=False)
+    assert seen == [] and "One moment" in text
+
+
+@pytest.mark.parametrize(
+    "text,stalls",
+    [
+        ("I'll need to check availability for a room for two guests. Let me do that for you.", True),
+        ("Got it. I'll check the availability for you. One moment, please.", True),
+        ("Let me quickly check the availability for your stay. Just a moment, please.", True),
+        ("I'll book that for you now.", True),
+        ("Please hold on while I look that up.", True),
+        ("Check-in starts at 2 PM.", False),
+        ("Your booking is confirmed. Thank you for calling. Goodbye.", False),
+        ("I found availability. The standard option is 210 dollars.", False),
+        ("Could you please provide the check-in and check-out dates?", False),
+        ("A staff member will follow up with you shortly.", False),
+    ],
+)
+def test_which_replies_count_as_promising_a_look_up(text, stalls):
+    from app.conversation.engine import _STALLING
+
+    assert bool(_STALLING.search(text)) is stalls
+
+
+async def test_a_question_that_mentions_a_moment_is_not_chased():
+    text, seen = await _stalled(stalls=False)
+    assert seen == []  # a plain question gets no follow-up either
+
+
+# ---------- one goodbye, and an honest note about how the confirmation went ----------
+async def test_no_second_goodbye_when_the_assistant_already_said_it():
+    from app.conversation.context import CALL_CLOSING
+
+    text = await _spoken("hotel__create_booking", "phone", "Your booking is confirmed. Thank you for calling. Goodbye.")
+    assert text.count("Goodbye") == 1 and CALL_CLOSING in text
+
+
+async def test_the_assistant_is_told_the_text_failed_and_nothing_goes_by_email():
+    from app.core.errors import UpstreamError
+    from app.notifications.messaging import MessageSender
+
+    class Down(MessageSender):
+        def send(self, to, body):
+            raise UpstreamError("trial")
+
+    class Mail(MessageSender):
+        def __init__(self):
+            self.sent = []
+
+        def send(self, to, body):
+            self.sent.append(to)
+
+    mail, results = Mail(), []
+
+    async def book(c, args):
+        return {"reference": "HB-1", "guest_email": "drew@example.com"}
+
+    class Llm(LLMProvider):
+        def __init__(self):
+            self.round = 0
+
+        async def stream(self, system, messages, tools):
+            self.round += 1
+            if self.round == 1:
+                yield LLMEvent(type="tool_use", tool_id="t", tool_name="hotel__book_room", tool_input={"a": 1})
+            else:
+                results.extend(m["content"] for m in messages if isinstance(m["content"], list))
+                yield LLMEvent(type="text", text="Done.")
+
+    registry = ToolRegistry([*builtin_tools({"sms": Down(), "whatsapp": Down(), "email": mail}), Tool("hotel__book_room", "d", {"type": "object", "properties": {}}, book)])
+    profile = parse_profile({**load_profile_file("hotel"), "enabledTools": ["hotel__book_room", "send_confirmation"]})
+    c = ctx()
+    c.channel, c.caller.phone = "phone", "+919000011122"
+    _ = [x async for x in ConversationEngine(Llm(), registry, confirmation_channel="sms").run_turn(profile, c, [], "go")]
+    assert mail.sent == [] and "could NOT be delivered" in str(results[-1])

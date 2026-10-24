@@ -6,6 +6,7 @@ from app.ai.base import LLMBusyError, LLMEvent, LLMProvider
 from app.conversation import service as svc
 from app.conversation.engine import ConversationEngine
 from app.conversation.service import ConversationService, accepts_offer
+from app.conversation.context import CALL_CLOSING
 from app.core.errors import UpstreamError
 from app.notifications.messaging import MessageSender
 from app.notifications.staff import StaffAlerts
@@ -93,7 +94,7 @@ async def test_when_nobody_can_take_the_call_the_caller_is_promised_a_callback(s
     service, sms, _ = build(session_factory, BrokenThenFine(broken=5))
     conv_id = await call(service, transfer_available=False)
     assert await service.reply(TENANT, conv_id, "Is there a room?") == svc.OFFER_CALLBACK
-    assert await service.reply(TENANT, conv_id, "yes") == svc.ACCEPTED_CALLBACK
+    assert await service.reply(TENANT, conv_id, "yes") == f"{svc.ACCEPTED_CALLBACK} {CALL_CLOSING}"  # ends the call
     await settle(service)
     assert len(sms.sent) == 1  # the business is still told, so they can call back
 
@@ -252,3 +253,53 @@ async def test_an_emergency_after_an_earlier_alert_is_sent_again_once(session_fa
     state.ctx.urgency = "emergency"
     assert service._needs_ping(state) is True  # but an emergency is never swallowed
     assert service._needs_ping(state) is False
+
+
+# ---------- the call ends once a call back is promised ----------
+async def test_accepting_a_call_back_ends_the_phone_call(session_factory, staff):
+    service, _, _ = build(session_factory, BrokenThenFine(broken=5))
+    conv_id = await call(service, transfer_available=False)
+    await service.reply(TENANT, conv_id, "Is there a room?")
+    assert (await service.reply(TENANT, conv_id, "yes please")).endswith(CALL_CLOSING)
+
+
+async def test_a_live_transfer_keeps_the_line_open(session_factory, staff):
+    service, _, _ = build(session_factory, BrokenThenFine(broken=5))
+    conv_id = await call(service, transfer_available=True)  # the caller is being handed over, not dropped
+    await service.reply(TENANT, conv_id, "Is there a room?")
+    assert CALL_CLOSING not in await service.reply(TENANT, conv_id, "yes please")
+
+
+async def _human_requested(transfer_available, urgency="normal", text="I have noted it, someone will call you."):
+    from app.conversation.context import CALL_CLOSING  # noqa: F401
+    from app.tools.builtin import request_human_tool
+
+    class Llm(LLMProvider):
+        def __init__(self):
+            self.round = 0
+
+        async def stream(self, system, messages, tools):
+            self.round += 1
+            if self.round == 1:
+                yield LLMEvent(type="tool_use", tool_id="t", tool_name="request_human", tool_input={"reason": "x"})
+            else:
+                yield LLMEvent(type="text", text=text)
+
+    from app.conversation.context import ConversationContext
+    from app.domain.loader import load_profile_file, parse_profile
+    from app.tools.registry import ToolRegistry
+
+    profile = parse_profile({**load_profile_file("hotel"), "enabledTools": ["request_human"]})
+    ctx = ConversationContext(session_id="s", tenant_id=TENANT, domain_profile_id="p", channel="phone", urgency=urgency)
+    ctx.transfer_available = transfer_available
+    engine = ConversationEngine(Llm(), ToolRegistry([request_human_tool()]))
+    return "".join([x async for x in engine.run_turn(profile, ctx, [], "get me a person")])
+
+
+async def test_a_promised_call_back_hangs_up_but_a_live_transfer_or_emergency_does_not():
+    from app.conversation.context import CALL_CLOSING
+
+    assert (await _human_requested(False)).endswith(CALL_CLOSING)
+    assert CALL_CLOSING not in await _human_requested(True)
+    assert CALL_CLOSING not in await _human_requested(False, urgency="emergency")
+    assert CALL_CLOSING not in await _human_requested(False, text="Anything else?")

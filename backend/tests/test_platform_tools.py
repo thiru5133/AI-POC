@@ -188,3 +188,46 @@ def test_twilio_errors_and_missing_config(monkeypatch):
         TwilioMessageSender(twilio(twilio_auth_token="")).send("+919876543210", "Hi")
     with pytest.raises(ConfigurationError, match="TWILIO_SMS_FROM"):
         TwilioMessageSender(twilio(twilio_sms_from="")).send("+919876543210", "Hi")
+
+
+# ---------- a Trial Twilio account only accepts its own templates ----------
+def _twilio_post(monkeypatch, replies):
+    import httpx
+
+    from app.notifications import messaging
+
+    sent = []
+
+    def post(url, data, auth, timeout):
+        sent.append(data["Body"])
+        status, body = replies.pop(0)
+        return httpx.Response(status, json=body, request=httpx.Request("POST", url))
+
+    monkeypatch.setattr(messaging.httpx, "post", post)
+    return sent
+
+
+def _settings():
+    from app.core.config import Settings
+
+    return Settings(_env_file=None, twilio_account_sid="AC1", twilio_auth_token="t", twilio_sms_from="+17372508034")
+
+
+def test_a_trial_account_falls_back_to_the_template(monkeypatch):
+    from app.notifications.messaging import TwilioMessageSender
+
+    sent = _twilio_post(monkeypatch, [(400, {"code": 572006}), (201, {})])
+    TwilioMessageSender(_settings()).send("+916383135741", "Your booking is confirmed.")
+    assert sent == ["Your booking is confirmed.", "sms_order_confirmation"]
+
+
+def test_staff_alerts_use_the_alert_template_and_other_errors_still_raise(monkeypatch):
+    from app.core.errors import UpstreamError
+    from app.notifications.messaging import create_alert_sms_sender
+
+    sent = _twilio_post(monkeypatch, [(400, {"code": 572006}), (201, {})])
+    create_alert_sms_sender(_settings()).send("+916383135741", "A caller needs a person.")
+    assert sent[-1] == "sms_internal_alerts"
+    _twilio_post(monkeypatch, [(400, {"code": 21211})])
+    with pytest.raises(UpstreamError):
+        create_alert_sms_sender(_settings()).send("+1", "x")

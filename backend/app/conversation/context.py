@@ -42,6 +42,7 @@ class ConversationContext(BaseModel):
     # and never saved with the conversation.
     business_phone: str | None = None
     pending_offer: str | None = None  # a system problem we offered a person for; waiting for the caller's yes or no
+    booked_calls: list[str] = Field(default_factory=list)  # bookings made in this conversation (see engine.py)
     staff_alerted: bool = False  # the business's people were pinged about this conversation (once)
     emergency_alerted: bool = False  # ...and told again if it turned into an emergency afterwards
     notifications_sent: int = 0  # confirmations sent in this conversation (capped, see tools/builtin.py)

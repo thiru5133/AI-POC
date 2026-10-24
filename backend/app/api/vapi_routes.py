@@ -8,6 +8,8 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.api import deps
+from app.conversation.context import CALL_CLOSING
+from app.conversation.engine import SAID_GOODBYE
 from app.conversation.service import ConversationService
 from app.core.config import Settings, get_settings
 from app.core.errors import ConfigurationError, ForbiddenError, UnauthorizedError
@@ -49,8 +51,11 @@ async def webhook(
 
     if kind == "end-of-call-report":
         ended = message.get("endedReason")
-        if vapi.is_error_ending(ended):
-            await _alert_dropped_call(sessions, service, dialled, phone.normalize_phone(caller_raw), call_id, str(ended))
+        if vapi.is_error_ending(ended) or vapi.is_silence_ending(ended):
+            await _alert_dropped_call(
+                sessions, service, dialled, phone.normalize_phone(caller_raw), call_id, str(ended),
+                unresolved_only=not vapi.is_error_ending(ended),
+            )
         return {}
 
     def lookup():
@@ -75,7 +80,9 @@ async def webhook(
     return {"assistant": vapi.assistant_config(settings, profile, llm_url)}
 
 
-async def _alert_dropped_call(sessions, service: ConversationService, dialled, caller, call_id, ended: str) -> None:
+async def _alert_dropped_call(
+    sessions, service: ConversationService, dialled, caller, call_id, ended: str, unresolved_only: bool = False
+) -> None:
     def lookup():
         with sessions() as session:
             found = business_for_number(session, dialled) if dialled else None
@@ -86,7 +93,7 @@ async def _alert_dropped_call(sessions, service: ConversationService, dialled, c
         log.warning("a call to a number that is not in service ended with %s", ended)
         return
     try:
-        await service.alert_call_ended(tenant_id, call_id, caller, ended)
+        await service.alert_call_ended(tenant_id, call_id, caller, ended, unresolved_only)
     except Exception:
         log.exception("could not alert the business about a dropped call", extra={"tenant_id": tenant_id})
 
@@ -107,14 +114,19 @@ async def chat_completions(
     user_text = vapi.last_user_text((await request.json()).get("messages") or [])
 
     async def stream() -> AsyncIterator[str]:
+        spoken = ""
         try:
             if user_text:
                 async for delta in service.reply_stream(tenant_id, conversation_id, user_text):
+                    spoken += delta
                     yield vapi.sse_chunk(delta)
         except Exception:
             log.exception("vapi turn failed", extra={"tenant_id": tenant_id, "session_id": conversation_id})
             yield vapi.sse_chunk(APOLOGY)
-        yield vapi.sse_chunk(finish=True)
+        if spoken.rstrip().endswith(CALL_CLOSING) or SAID_GOODBYE.search(spoken.strip()):  # the assistant said goodbye: drop the line after it
+            yield vapi.sse_end_call_chunk()
+        else:
+            yield vapi.sse_chunk(finish=True)
         yield vapi.SSE_DONE
 
     return StreamingResponse(stream(), media_type="text/event-stream", headers={"Cache-Control": "no-cache"})

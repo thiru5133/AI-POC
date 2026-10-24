@@ -12,6 +12,7 @@ refuses to start without one. It talks to the backend with its own, separate key
 
 import difflib
 import os
+import re
 from typing import Any
 
 import httpx
@@ -83,6 +84,13 @@ def _resolve_hotel(text: str) -> tuple[str, dict | None]:
     return wanted, {"error": {"code": "unknown_hotel", "message": f"No hotel matches '{text}'. Valid hotels: {valid}"}}
 
 
+def _day(value: str) -> str:
+    """The date part of what a model passed. A caller says 'tonight at 8 PM' and a model may send
+    2026-10-24T20:00:00; the backend only takes plain dates, so keep the day and drop the time."""
+    match = re.match(r"\s*(\d{4}-\d{2}-\d{2})", value or "")
+    return match.group(1) if match else value
+
+
 def _as_object(data: Any, key: str) -> Any:
     """Tools should return one JSON object (a bare list is split into several content blocks by MCP)."""
     return {key: data} if isinstance(data, list) else data
@@ -127,7 +135,7 @@ def check_availability(
         country: Optional country name, e.g. Sri Lanka.
         category: Optional room type code, e.g. standard, deluxe, suite (types differ per hotel).
     """
-    params = {"check_in": check_in, "check_out": check_out}
+    params = {"check_in": _day(check_in), "check_out": _day(check_out)}
     if hotel:
         hotel, error = _resolve_hotel(hotel)
         if error:
@@ -164,8 +172,8 @@ def book_room(
             "category": category.strip().lower(),
             "guest_name": guest_name,
             "guest_email": guest_email,
-            "check_in": check_in,
-            "check_out": check_out,
+            "check_in": _day(check_in),
+            "check_out": _day(check_out),
             "guests": guests,
         },
     )

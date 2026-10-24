@@ -69,6 +69,10 @@ def build_system_prompt(profile: DomainProfile, ctx: ConversationContext, tools_
             "- Before an action that changes something (a booking or cancellation), confirm the details with the "
             "caller. Dates passed to tools must be exact, in the format the tool asks for.",
             "- Read results back naturally; never read out technical ids, JSON or field names.",
+            "- When you call a tool, say at most 'one moment'. Never say a booking is confirmed or done until the tool "
+            "has returned successfully, and never repeat the same confirmation twice.",
+            "- On a phone call you hear an email address through speech recognition, which often gets letters wrong. "
+            "Spell the address back letter by letter and wait for the caller to say yes before you use it.",
             *(
                 [
                     "- Once a booking is made, confirm it in one or two sentences and do not ask whether they need "
@@ -78,6 +82,11 @@ def build_system_prompt(profile: DomainProfile, ctx: ConversationContext, tools_
                 if ctx.channel == "phone"
                 else []
             ),
+            "- When you need live information (availability, prices, a booking), call the tool in the SAME reply. "
+            "Never say 'one moment' or 'let me check' without calling it, and never leave the caller waiting.",
+            "- Only say there is a problem with the system when a tool has just returned an error. If you did not "
+            "catch or understand what the caller said (the line is a phone call and words get cut off), never blame "
+            "the system: ask them politely to repeat it, and repeat back what you still need.",
             "- If a tool fails or returns an error, tell the caller in one short sentence which part of the system is "
             "having trouble (for example the booking system), with no technical details, and ask if they would like "
             "to be connected to a person. If they agree, call request_human.",

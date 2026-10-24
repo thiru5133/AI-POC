@@ -219,3 +219,52 @@ def test_a_normal_ending_or_an_unknown_number_alerts_nobody(client, session_fact
     client.post("/api/vapi/webhook", json=ended("customer-ended-call"), headers=AUTH)
     client.post("/api/vapi/webhook", json=ended("pipeline-error-x", dialled="+14155550100"), headers=AUTH)
     assert sms.sent == [] and email.sent == []
+
+
+# ---------- a call that went quiet is followed up only when nothing was resolved ----------
+def test_silence_is_its_own_kind_of_ending():
+    assert vapi.is_silence_ending("silence-timed-out") and vapi.is_silence_ending("call-ended-due-to-silence")
+    assert not vapi.is_silence_ending("customer-ended-call") and not vapi.is_silence_ending(None)
+
+
+def _said(session_factory, text, **context):
+    """Marks the conversation of call-1 as one where the caller said `text`, plus extra saved context."""
+    from sqlalchemy import select
+
+    from app.models import Message
+
+    with session_factory() as session:
+        conv = next(c for c in session.scalars(select(Conversation)) if (c.context or {}).get("call_id") == "call-1")
+        if text:
+            session.add(Message(conversation_id=conv.id, tenant_id=conv.tenant_id, role="user", content=text))
+        conv.context = {**conv.context, **context}
+        session.commit()
+
+
+def _silent_call(client, session_factory, text, **context):
+    business(session_factory, client)
+    assert client.post("/api/vapi/webhook", json=incoming(), headers=AUTH).status_code == 200
+    _said(session_factory, text, **context)
+    client.post("/api/vapi/webhook", json=ended("silence-timed-out"), headers=AUTH)
+
+
+def test_a_caller_who_went_quiet_without_being_helped_is_followed_up(client, session_factory, alerted):
+    sms, email = alerted
+    _silent_call(client, session_factory, "I want to book a room")
+    assert len(sms.sent) == 1 and CALLER in sms.sent[0][1] and "silence-timed-out" in sms.sent[0][1]
+
+
+def test_a_quiet_call_needs_no_follow_up_when_nothing_was_said_or_it_was_resolved(client, session_factory, alerted):
+    sms, email = alerted
+    _silent_call(client, session_factory, "")  # never said anything
+    assert sms.sent == []
+
+
+def test_a_booked_quiet_call_needs_no_follow_up(client, session_factory, alerted):
+    sms, _ = alerted
+    _silent_call(client, session_factory, "book it", booked_calls=["x:{}"])
+    assert sms.sent == []
+
+
+def test_silence_is_not_an_error_ending():
+    assert not vapi.is_error_ending("silence-timed-out")
