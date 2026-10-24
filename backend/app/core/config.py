@@ -35,6 +35,8 @@ class Settings(BaseSettings):
     twilio_account_sid: str = ""  # empty = log SMS / WhatsApp messages instead of sending them (dev only)
     twilio_auth_token: str = ""
     twilio_sms_from: str = ""  # E.164 number or messaging service sender, e.g. +14155550100
+    # How a caller is texted automatically after a phone booking: "sms", "whatsapp" or "" to turn it off.
+    booking_confirmation_channel: str = "sms"
     twilio_whatsapp_from: str = ""  # E.164 number enabled for WhatsApp (sandbox: +14155238886)
     # Public https URL of this backend (e.g. an ngrok URL in development): Twilio calls it, and it is what the signature
     # of a Twilio request is checked against.

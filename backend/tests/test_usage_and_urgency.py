@@ -194,3 +194,49 @@ def test_vapi_assistant_ends_the_call_on_the_closing_phrase():
 
     profile = parse_profile(load_profile_file("hotel"))
     assert vapi.assistant_config(get_settings(), profile, "https://x/llm")["endCallPhrases"] == [CALL_CLOSING]
+
+
+# ---------- the caller is texted automatically after a booking ----------
+async def _booked_call(channel_setting, ctx_channel="phone", caller="+919000011122", output=None, enabled=True):
+    from app.notifications.messaging import MessageSender
+
+    class Rec(MessageSender):
+        def __init__(self):
+            self.sent = []
+
+        def send(self, to, body):
+            self.sent.append((to, body))
+
+    sms, wa = Rec(), Rec()
+    output = output or {"reference": "HB-1", "hotel_name": "Holiday Kandy Hills", "check_in": "2026-10-24", "check_out": "2026-10-25", "total_price": 140}
+
+    async def book(c, args):
+        return output
+
+    registry = ToolRegistry([*builtin_tools({"sms": sms, "whatsapp": wa, "email": Rec()}), Tool("hotel__book_room", "d", {"type": "object", "properties": {}}, book)])
+    names = ["hotel__book_room", *(["send_confirmation"] if enabled else [])]
+    profile = parse_profile({**load_profile_file("hotel"), "enabledTools": names})
+    c = ctx()
+    c.channel, c.caller.phone = ctx_channel, caller
+    engine = ConversationEngine(_CallsTool("hotel__book_room"), registry, confirmation_channel=channel_setting)
+    _ = [x async for x in engine.run_turn(profile, c, [], "book it")]
+    return c, sms, wa
+
+
+async def test_a_phone_booking_texts_the_callers_own_number():
+    c, sms, _ = await _booked_call("sms")
+    (to, body), = sms.sent
+    assert to == "+919000011122" and "HB-1" in body and "hotel name Holiday Kandy Hills" in body
+    assert "check in 2026-10-24" in body and "check out 2026-10-25" in body and "Total 140" in body
+    assert c.notifications_sent == 1 and (usage.CONFIRMATION, 1) in c.usage_log
+
+
+async def test_the_channel_can_be_whatsapp():
+    _, sms, wa = await _booked_call("whatsapp")
+    assert sms.sent == [] and len(wa.sent) == 1
+
+
+async def test_no_text_when_off_on_chat_without_caller_id_or_without_the_tool():
+    for kwargs in ({"channel_setting": ""}, {"channel_setting": "sms", "ctx_channel": "web"}, {"channel_setting": "sms", "caller": None}, {"channel_setting": "sms", "enabled": False}):
+        _, sms, wa = await _booked_call(**kwargs)
+        assert sms.sent == [] and wa.sent == []

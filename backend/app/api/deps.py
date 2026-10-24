@@ -93,7 +93,7 @@ def get_service(
     mcp = McpToolSource(sessions, settings, mcp_client, _mcp_tool_cache, _mcp_result_cache)
     email = create_email_sender(settings)
     alerts = StaffAlerts(sessions, create_message_senders(settings, email)["sms"], email, settings.app_base_url)
-    return ConversationService(sessions, ConversationEngine(llm, tools, mcp=mcp), alerts)
+    return ConversationService(sessions, ConversationEngine(llm, tools, mcp=mcp, confirmation_channel=settings.booking_confirmation_channel), alerts)
 
 
 # ---- auth ----

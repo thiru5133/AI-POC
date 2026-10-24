@@ -72,7 +72,8 @@ def build_system_prompt(profile: DomainProfile, ctx: ConversationContext, tools_
             *(
                 [
                     "- Once a booking is made, confirm it in one or two sentences and do not ask whether they need "
-                    "anything else: the call ends automatically right after."
+                    "anything else: the call ends automatically right after. A confirmation text goes to the caller's "
+                    "phone by itself, so do not offer to send one to that number."
                 ]
                 if ctx.channel == "phone"
                 else []
